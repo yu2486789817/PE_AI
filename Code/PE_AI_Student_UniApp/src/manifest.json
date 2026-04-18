@@ -1,0 +1,72 @@
+{
+    "name" : "PE AI 智能助手",
+    "appid" : "",
+    "description" : "大学体育智能课堂平台 - 学生端助手 (PWA/iOS)",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        "modules" : {},
+        "distribute" : {
+            "android" : {
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>"
+                ]
+            },
+            "ios" : {
+                "privacyDescription" : {
+                    "NSCameraUsageDescription" : "需要使用摄像头录制视频作业",
+                    "NSMicrophoneUsageDescription" : "需要使用麦克风录制视频作业",
+                    "NSPhotoLibraryUsageDescription" : "需要从相册选择视频作业"
+                }
+            },
+            "sdkConfigs" : {}
+        }
+    },
+    "quickapp" : {},
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false
+        },
+        "usingComponents" : true
+    },
+    "mp-alipay" : {
+        "usingComponents" : true
+    },
+    "mp-baidu" : {
+        "usingComponents" : true
+    },
+    "mp-toutiao" : {
+        "usingComponents" : true
+    },
+    "uniStatistics" : {
+        "enable" : false
+    },
+    "vueVersion" : "3",
+    "h5" : {
+        "router" : {
+            "mode" : "hash",
+            "base" : "./"
+        },
+        "sdkConfigs" : {},
+        "title" : "PE AI Smart",
+        "optimization" : {
+            "treeShaking" : {
+                "enable" : true
+            }
+        }
+    }
+}

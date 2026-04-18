@@ -1,0 +1,122 @@
+import request from './request';
+
+export const getSessions = async (userId) => {
+	try {
+		const response = await request.get(`/chat/api/sessions?user_id=${userId}`);
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: '获取会话列表失败' };
+	} catch (error) {
+		console.error('获取会话列表失败:', error);
+		return { success: false, message: '获取会话列表失败' };
+	}
+};
+
+export const getLatestSession = async (userId) => {
+	try {
+		const response = await request.get(`/chat/api/sessions/user/${userId}`);
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, data: null };
+	} catch (error) {
+		console.error('获取最新会话失败:', error);
+		return { success: false, message: '获取最新会话失败' };
+	}
+};
+
+export const createSession = async (userId, model = 'Qwen') => {
+	try {
+		const response = await request.post('/chat/api/sessions', {
+			user_id: userId,
+			model: model
+		});
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: '创建会话失败' };
+	} catch (error) {
+		console.error('创建会话失败:', error);
+		return { success: false, message: '创建会话失败' };
+	}
+};
+
+export const getSession = async (sessionId) => {
+	try {
+		const response = await request.get(`/chat/api/sessions/${sessionId}`);
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: '获取会话详情失败' };
+	} catch (error) {
+		console.error('获取会话详情失败:', error);
+		return { success: false, message: '获取会话详情失败' };
+	}
+};
+
+export const sendMessage = async (sessionId, message, model = 'Qwen') => {
+	try {
+		const response = await request.post(`/chat/api/sessions/${sessionId}/messages`, {
+			message: message,
+			model: model
+		});
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: '发送消息失败' };
+	} catch (error) {
+		console.error('发送消息失败:', error);
+		return { success: false, message: '发送消息失败' };
+	}
+};
+
+export const deleteSession = async (sessionId) => {
+	try {
+		const response = await request.delete(`/chat/api/sessions/${sessionId}`);
+		if (response.data && response.data.success) {
+			return { success: true };
+		}
+		return { success: false, message: '删除会话失败' };
+	} catch (error) {
+		console.error('删除会话失败:', error);
+		return { success: false, message: '删除会话失败' };
+	}
+};
+
+export const clearSession = async (sessionId) => {
+	try {
+		const response = await request.post(`/chat/api/sessions/${sessionId}/clear`);
+		if (response.data && response.data.success) {
+			return { success: true };
+		}
+		return { success: false, message: '清空会话失败' };
+	} catch (error) {
+		console.error('清空会话失败:', error);
+		return { success: false, message: '清空会话失败' };
+	}
+};
+
+export const getModels = async () => {
+	try {
+		const response = await request.get('/chat/api/models');
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: '获取模型列表失败' };
+	} catch (error) {
+		console.error('获取模型列表失败:', error);
+		return { success: false, message: '获取模型列表失败' };
+	}
+};
+
+export default {
+	getSessions,
+	getLatestSession,
+	createSession,
+	getSession,
+	sendMessage,
+	deleteSession,
+	clearSession,
+	getModels
+};

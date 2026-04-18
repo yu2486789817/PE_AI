@@ -1,0 +1,90 @@
+{
+    "pages": [
+        {
+            "path": "pages/index/index",
+            "style": { "navigationBarTitleText": "首页" }
+        },
+        {
+            "path": "pages/assignments/list",
+            "style": { "navigationBarTitleText": "我的作业" }
+        },
+        {
+            "path": "pages/assistant/chat",
+            "style": { "navigationBarTitleText": "AI 助手" }
+        },
+        {
+            "path": "pages/profile/index",
+            "style": { "navigationBarTitleText": "个人中心" }
+        },
+        {
+            "path": "pages/login/login",
+            "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
+        },
+        {
+            "path": "pages/login/register",
+            "style": { "navigationBarTitleText": "注册", "navigationStyle": "custom" }
+        },
+        {
+            "path": "pages/course/detail",
+            "style": { "navigationBarTitleText": "课程详情" }
+        },
+        {
+            "path": "pages/assignments/detail",
+            "style": { "navigationBarTitleText": "作业详情" }
+        },
+        {
+            "path": "pages/assignments/history",
+            "style": { "navigationBarTitleText": "提交历史" }
+        },
+        {
+            "path": "pages/course/videos",
+            "style": { "navigationBarTitleText": "教学视频" }
+        },
+        {
+            "path": "pages/profile/edit",
+            "style": { "navigationBarTitleText": "编辑信息" }
+        },
+        {
+            "path": "pages/profile/password",
+            "style": { "navigationBarTitleText": "修改密码" }
+        }
+    ],
+    "globalStyle": {
+        "navigationBarTextStyle": "white",
+        "navigationBarTitleText": "PE AI Assistant",
+        "navigationBarBackgroundColor": "#1d63ff",
+        "backgroundColor": "#F8F8F8"
+    },
+    "tabBar": {
+        "color": "#9ca3af",
+        "selectedColor": "#1d63ff",
+        "borderStyle": "white",
+        "backgroundColor": "#F8F8F8",
+        "list": [
+            {
+                "pagePath": "pages/index/index",
+                "text": "首页",
+                "iconPath": "static/tabbar/home.png",
+                "selectedIconPath": "static/tabbar/home-active.png"
+            },
+            {
+                "pagePath": "pages/assignments/list",
+                "text": "作业",
+                "iconPath": "static/tabbar/assignment.png",
+                "selectedIconPath": "static/tabbar/assignment-active.png"
+            },
+            {
+                "pagePath": "pages/assistant/chat",
+                "text": "AI助手",
+                "iconPath": "static/tabbar/chat.png",
+                "selectedIconPath": "static/tabbar/chat-active.png"
+            },
+            {
+                "pagePath": "pages/profile/index",
+                "text": "我的",
+                "iconPath": "static/tabbar/profile.png",
+                "selectedIconPath": "static/tabbar/profile-active.png"
+            }
+        ]
+    }
+}

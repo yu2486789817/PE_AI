@@ -1,0 +1,102 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.user
+*.userosscache
+*.sln.docstates
+
+# Node - PE_AI_Manager_Frontend & PE_AI_Student_UniApp
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
+*.tsbuildinfo
+.eslintcache
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python - AIChat & Yolo_backend & 测试数据生成
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+yolov8n-pose.pt
+*.pt
+*.pth
+model/
+models/
+*.db
+*.sqlite
+
+# Java - pe-ai-backend
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/
+!**/src/main/resources/application.yml
+application-local.yml
+application-dev.yml
+
+# .NET - SE_PE_AI_Manager
+bin/
+obj/
+*.pdb
+*.dll
+*.exe
+publish/
+
+# UniApp - PE_AI_Student_UniApp
+unpackage/
+wxcomponents/
+miniprogram/
+
+# Build outputs
+*.apk
+*.ipa
+*.app
+*.appcache
+*.webapp
+
+# Uploads and user data
+uploads/
+data/
+*.csv
+!Code/SE_PE_AI_Manager/std_student.csv
+!Code/SE_PE_AI_Manager/std_teacher.csv
+
+# Misc
+*.bak
+*.tmp
+*.temp
+*.swp
+*~

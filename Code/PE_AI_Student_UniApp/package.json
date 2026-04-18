@@ -1,0 +1,27 @@
+{
+  "name": "pe-ai-student-uniapp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:h5": "uni --platform h5",
+    "build:h5": "uni build --platform h5",
+    "dev:app": "uni --platform app",
+    "build:app": "uni build --platform app"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5000520260324002",
+    "@dcloudio/uni-app-plus": "3.0.0-5000520260324002",
+    "@dcloudio/uni-components": "3.0.0-5000520260324002",
+    "@dcloudio/uni-h5": "3.0.0-5000520260324002",
+    "pinia": "^2.1.7",
+    "vue": "^3.5.13",
+    "crypto-js": "^4.2.0",
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/uni-cli-shared": "3.0.0-5000520260324002",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5000520260324002",
+    "vite": "5.2.8"
+  }
+}
