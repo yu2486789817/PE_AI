@@ -93,12 +93,4 @@ PE-AI-Project/
 
 本项目遵循 [MIT License](LICENSE) 开源协议。
 
----
-
-## 👥 贡献者 (Contributors)
-
-- **虞澍 (Project Manager)**
-- [其他团队成员名称]
-
----
 © 2026 PE-AI Project Team. All Rights Reserved.
