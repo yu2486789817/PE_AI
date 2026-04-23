@@ -72,18 +72,22 @@ public class LegacyUserController {
     // ==================== CHANGE PASSWORD ====================
 
     @PostMapping("/change_teacher_password")
-    public Result<Void> changeTeacherPassword(@RequestBody Map<String, String> body) {
+    public Result<Void> changeTeacherPassword(@RequestBody Map<String, String> body,
+                                              HttpServletRequest request) {
         return userService.changeTeacherPassword(
                 getParam(body, "first"),   // id
+                RequestValueResolver.resolveJwt(body, request),
                 getParam(body, "second"),  // old password
                 getParam(body, "third")    // new password
         );
     }
 
     @PostMapping("/change_student_password")
-    public Result<Void> changeStudentPassword(@RequestBody Map<String, String> body) {
+    public Result<Void> changeStudentPassword(@RequestBody Map<String, String> body,
+                                              HttpServletRequest request) {
         return userService.changeStudentPassword(
                 getParam(body, "first"),   // id
+                RequestValueResolver.resolveJwt(body, request),
                 getParam(body, "second"),  // old password
                 getParam(body, "third")    // new password
         );
@@ -123,8 +127,14 @@ public class LegacyUserController {
     // The old frontend expects data returned as tab-separated string: "name\t\rgender\t\rtitle..."
 
     @PostMapping("/get_teacher_info")
-    public Result<String> getTeacherInfo(@RequestBody Map<String, String> body) {
-        Result<Teacher> result = userService.getTeacherInfo(getParam(body, "fourth")); // fourth = teacherId
+    public Result<String> getTeacherInfo(@RequestBody Map<String, String> body,
+                                         HttpServletRequest request) {
+        String teacherId = getParam(body, "fourth");
+        Result<Void> auth = userService.checkJwt(1, teacherId, RequestValueResolver.resolveJwt(body, request));
+        if (auth.getCode() < 0) {
+            return Result.error(auth.getCode(), auth.getMessage());
+        }
+        Result<Teacher> result = userService.getTeacherInfo(teacherId); // fourth = teacherId
         if (result.getCode() < 0) {
             return Result.error(result.getCode(), result.getMessage());
         }
@@ -137,8 +147,14 @@ public class LegacyUserController {
     }
 
     @PostMapping("/get_student_info")
-    public Result<String> getStudentInfo(@RequestBody Map<String, String> body) {
-        Result<Student> result = userService.getStudentInfo(getParam(body, "fourth")); // fourth = studentId
+    public Result<String> getStudentInfo(@RequestBody Map<String, String> body,
+                                         HttpServletRequest request) {
+        String studentId = getParam(body, "fourth");
+        Result<Void> auth = userService.checkJwt(0, studentId, RequestValueResolver.resolveJwt(body, request));
+        if (auth.getCode() < 0) {
+            return Result.error(auth.getCode(), auth.getMessage());
+        }
+        Result<Student> result = userService.getStudentInfo(studentId); // fourth = studentId
         if (result.getCode() < 0) {
             return Result.error(result.getCode(), result.getMessage());
         }

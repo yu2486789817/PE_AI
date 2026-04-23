@@ -45,12 +45,17 @@ onMounted(() => {
 
 const loadVideos = async () => {
 	loading.value = true;
+	const user = uni.getStorageSync('user') || {};
+	const token = uni.getStorageSync('token') || user?.token || '';
 	try {
 		const idResp = await request.post('/Class/get_class_id_by_course', {
-			first: courseId.value
+			first: '0',
+			second: user?.id,
+			third: token,
+			fourth: courseId.value
 		});
 
-		if (!idResp.data?.data || idResp.data.data === 'NULL') {
+		if (!idResp.data?.success || !idResp.data?.data || idResp.data.data === 'NULL') {
 			videos.value = [];
 			loading.value = false;
 			return;
@@ -61,19 +66,24 @@ const loadVideos = async () => {
 		for (const cid of ids) {
 			try {
 				const infoResp = await request.post('/Class/get_info_by_class_id', {
-					first: cid
+					first: courseId.value,
+					second: cid
 				});
-				if (infoResp.data?.data) {
+				if (infoResp.data?.success && infoResp.data?.data) {
 					const d = infoResp.data.data.split('\t\r');
+					const rawUrl = d[2] || '';
+					const filename = rawUrl ? rawUrl.substring(rawUrl.lastIndexOf('/') + 1) : '';
+					const normalizedUrl = filename ? `/Teaching-video/files/${filename}` : '';
 					items.push({
 						id: cid,
 						title: d[0] || '未命名视频',
 						description: d[1] || '',
-						url: d[2] || '',
+						url: normalizedUrl || rawUrl,
 						create_time: d[3] || ''
 					});
 				}
 			} catch (e) {
+				console.error('load class video info error', e);
 			}
 		}
 		videos.value = items;
@@ -91,12 +101,7 @@ const playVideo = (video) => {
 		url = `/Teaching-video/files/${filename}`;
 	}
 
-	// #ifdef H5
-	window.open(url, '_blank');
-	// #endif
-	// #ifndef H5
 	uni.navigateTo({ url: `/pages/course/videoPlayer?url=${encodeURIComponent(url)}&title=${encodeURIComponent(video.title)}` });
-	// #endif
 };
 
 const formatDate = (s) => {

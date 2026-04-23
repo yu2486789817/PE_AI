@@ -1,8 +1,8 @@
-<template>
-	<view class="tabbar-container glass-panel">
-		<view 
-			v-for="(item, index) in tabList" 
-			:key="index" 
+﻿<template>
+	<view class="tabbar-container">
+		<view
+			v-for="(item, index) in tabList"
+			:key="index"
 			class="tab-item"
 			:class="{ active: currentPath === item.pagePath }"
 			@click="switchTab(item.pagePath)"
@@ -20,7 +20,6 @@
 						<polyline points="14 2 14 8 20 8"></polyline>
 						<line x1="16" y1="13" x2="8" y2="13"></line>
 						<line x1="16" y1="17" x2="8" y2="17"></line>
-						<polyline points="10 9 9 9 8 9"></polyline>
 					</svg>
 				</view>
 				<view v-else-if="item.id === 'chat'" class="svg-icon">
@@ -44,41 +43,38 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { onMounted } from 'vue'
 
 const props = defineProps({
 	currentPath: {
 		type: String,
 		default: '/pages/index/index'
 	}
-});
+})
 
 const tabList = [
 	{ id: 'home', text: '首页', pagePath: '/pages/index/index' },
 	{ id: 'assignment', text: '作业', pagePath: '/pages/assignments/list' },
-	{ id: 'chat', text: 'AI助手', pagePath: '/pages/assistant/chat' },
+	{ id: 'chat', text: 'AI 助手', pagePath: '/pages/assistant/chat' },
 	{ id: 'profile', text: '我的', pagePath: '/pages/profile/index' }
-];
+]
 
 onMounted(() => {
-	// 隐藏原生 TabBar
 	uni.hideTabBar({
 		animation: false,
-		fail: () => {
-			// 在非 tabBar 页面调用可能会失败，忽略即可
-		}
-	});
-});
+		fail: () => {}
+	})
+})
 
 const switchTab = (path) => {
-	if (props.currentPath === path) return;
+	if (props.currentPath === path) return
 	uni.switchTab({
 		url: path,
 		fail: () => {
-			uni.navigateTo({ url: path });
+			uni.navigateTo({ url: path })
 		}
-	});
-};
+	})
+}
 </script>
 
 <style scoped>
@@ -94,8 +90,10 @@ const switchTab = (path) => {
 	justify-content: space-around;
 	padding: 0 20rpx;
 	z-index: 1000;
-	box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.08);
+	box-shadow: var(--shadow-card);
 	margin-bottom: var(--safe-area-bottom);
+	background: rgba(255, 255, 255, 0.92);
+	border: 2rpx solid var(--color-line-200);
 }
 
 .tab-item {
@@ -113,7 +111,7 @@ const switchTab = (path) => {
 	width: 48rpx;
 	height: 48rpx;
 	margin-bottom: 6rpx;
-	color: var(--ink-500);
+	color: var(--color-ink-500);
 	transition: all 0.3s ease;
 }
 
@@ -124,18 +122,18 @@ const switchTab = (path) => {
 
 .tab-text {
 	font-size: 20rpx;
-	color: var(--ink-500);
+	color: var(--color-ink-500);
 	font-weight: 500;
 	transition: all 0.3s ease;
 }
 
 .tab-item.active .icon-wrapper {
-	color: var(--brand-500);
+	color: var(--color-primary-600);
 	transform: translateY(-4rpx);
 }
 
 .tab-item.active .tab-text {
-	color: var(--brand-500);
+	color: var(--color-primary-600);
 	font-weight: 700;
 }
 
@@ -145,7 +143,7 @@ const switchTab = (path) => {
 	width: 8rpx;
 	height: 8rpx;
 	border-radius: 50%;
-	background: var(--brand-500);
-	box-shadow: 0 0 10rpx var(--brand-400);
+	background: var(--color-primary-600);
+	box-shadow: 0 0 10rpx rgba(35, 109, 242, 0.5);
 }
 </style>

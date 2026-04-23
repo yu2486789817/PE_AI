@@ -1,4 +1,4 @@
-{
+﻿{
     "pages": [
         {
             "path": "pages/index/index",
@@ -41,6 +41,10 @@
             "style": { "navigationBarTitleText": "教学视频" }
         },
         {
+            "path": "pages/course/videoPlayer",
+            "style": { "navigationBarTitleText": "视频播放" }
+        },
+        {
             "path": "pages/profile/edit",
             "style": { "navigationBarTitleText": "编辑信息" }
         },
@@ -52,12 +56,12 @@
     "globalStyle": {
         "navigationBarTextStyle": "white",
         "navigationBarTitleText": "PE AI Assistant",
-        "navigationBarBackgroundColor": "#1d63ff",
+        "navigationBarBackgroundColor": "#236df2",
         "backgroundColor": "#F8F8F8"
     },
     "tabBar": {
         "color": "#9ca3af",
-        "selectedColor": "#1d63ff",
+        "selectedColor": "#236df2",
         "borderStyle": "white",
         "backgroundColor": "#F8F8F8",
         "list": [

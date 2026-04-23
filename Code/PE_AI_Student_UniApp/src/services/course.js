@@ -1,16 +1,26 @@
 import request from './request';
 
+const getToken = () => {
+	const token = uni.getStorageSync('token');
+	if (token) return token;
+	const user = uni.getStorageSync('user') || {};
+	return user.token || '';
+};
+
 export const getStudentCourses = async (studentId) => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Course_student/get_course_id_by_student', {
-			first: studentId
+			first: studentId,
+			second: token
 		});
 		if (response.data && response.data.data && response.data.data !== 'NULL') {
-			const courseIds = response.data.data.split('\t\r');
+			const courseIds = response.data.data.split('\t\r').filter(Boolean);
 			const courses = [];
 			for (const courseId of courseIds) {
 				const courseResp = await request.post('/Course/get_info_by_course_id', {
-					first: courseId
+					first: courseId,
+					second: token
 				});
 				if (courseResp.data && courseResp.data.data) {
 					const parts = courseResp.data.data.split('\t\r');
@@ -37,11 +47,13 @@ export const getStudentCourses = async (studentId) => {
 
 export const joinCourse = async (studentId, courseCode) => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Course_student/add_course', {
 			first: studentId,
+			second: token,
 			third: courseCode
 		});
-		return { success: response.data && response.data.code >= 0, data: response.data };
+		return { success: !!(response.data && response.data.success), data: response.data };
 	} catch (error) {
 		console.error('加入课程失败:', error);
 		return { success: false, message: '加入课程失败，课程码可能不正确' };
@@ -50,8 +62,10 @@ export const joinCourse = async (studentId, courseCode) => {
 
 export const getCourseInfo = async (courseId) => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Course/get_info_by_course_id', {
-			first: courseId
+			first: courseId,
+			second: token
 		});
 		if (response.data && response.data.data) {
 			const parts = response.data.data.split('\t\r');

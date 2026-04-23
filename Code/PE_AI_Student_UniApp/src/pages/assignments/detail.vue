@@ -48,6 +48,7 @@
 
 				<view class="progress-box" v-if="isUploading">
 					<text class="progress-text">上传中... {{ uploadProgress }}%</text>
+					<text class="progress-text" v-if="processingText">{{ processingText }}</text>
 					<view class="progress-bar"><view class="progress-fill" :style="{ width: uploadProgress + '%' }"></view></view>
 				</view>
 
@@ -76,6 +77,7 @@ const isUploading = ref(false);
 const uploadProgress = ref(0);
 const assignmentId = ref('');
 const courseId = ref('');
+const processingText = ref('');
 
 onMounted(() => {
 	const pages = getCurrentPages();
@@ -136,48 +138,140 @@ const chooseVideo = () => {
 	});
 };
 
-const removeFile = () => {
-	selectedFile.value = null;
-};
-
 const submitAssignment = async () => {
 	if (!selectedFile.value) return;
 	isUploading.value = true;
 	uploadProgress.value = 0;
-	const user = uni.getStorageSync('user');
+	processingText.value = '准备压缩视频...';
+	const user = uni.getStorageSync('user') || {};
+	const studentId = user?.id || '';
+	const jwt = uni.getStorageSync('token') || user?.token || '';
+
+	const uploadProgressTimer = setInterval(() => {
+		if (uploadProgress.value < 90) uploadProgress.value += 5;
+	}, 400);
 
 	try {
-		uni.uploadFile({
-			url: '/Homework/upload_homework',
-			filePath: selectedFile.value.path,
-			name: 'video',
-			formData: {
-				first: assignmentId.value,
-				second: user?.id || ''
-			},
-			success: () => {
-				uni.showToast({ title: '提交成功' });
-				if (assignment.value) {
-					assignment.value.statusText = '已提交';
-					assignment.value.statusClass = 'active';
-				}
-			},
-			fail: () => {
-				uni.showToast({ title: '提交失败', icon: 'none' });
-			},
-			complete: () => {
-				isUploading.value = false;
-			}
+		if (!studentId) throw new Error('未获取到学生ID');
+
+		// 1) 上传前压缩，降低存储占用与分析显存压力
+		const compressed = await compressVideo(selectedFile.value.path);
+		processingText.value = 'AI分析中...';
+
+		// 2) 对齐 Web 流程：先调用 YOLO 处理并落盘
+		const poseType = aiType.value || 'squat';
+		const processUrl = `/video/process_and_save_video?homework_id=${encodeURIComponent(assignmentId.value)}&student_id=${encodeURIComponent(studentId)}&pose_type=${encodeURIComponent(poseType)}`;
+		await uploadToYolo(processUrl, compressed.path);
+
+		// 3) 将处理后视频 URL 写入作业提交表
+		processingText.value = '保存作业记录...';
+		const processedVideoUrl = `/video/get_processed_video?homework_id=${encodeURIComponent(assignmentId.value)}&student_id=${encodeURIComponent(studentId)}&download=false`;
+		const submitResp = await request.post('/Homework/submit_homework', {
+			first: studentId,
+			second: jwt,
+			third: courseId.value,
+			fourth: assignmentId.value,
+			fifth: processedVideoUrl
 		});
 
-		const timer = setInterval(() => {
-			if (uploadProgress.value < 90) uploadProgress.value += 10;
-			else clearInterval(timer);
-		}, 500);
+			const submitId = submitResp?.data?.data;
+			if (submitId) {
+				// 4) 拉取 AI 统计并计算分数（与 Web 保持一致）
+				const required = Number(requiredCount.value) || 0;
+				const stats = await fetchAiStats(assignmentId.value, studentId, poseType);
+				const correctCount = Number(stats?.correct_count) || 0;
+				const aiScore = required > 0 ? Math.round((correctCount / required) * 100) : 0;
+				const aiFeedback = buildAiFeedback(stats) || 'AI分析已完成，详细反馈可在教师端查看。';
+				await request.post('/Homework/AI_test', {
+					first: String(submitId),
+					second: processedVideoUrl,
+					third: String(aiScore),
+					fourth: aiFeedback
+				});
+			}
+
+		uploadProgress.value = 100;
+		uni.showToast({ title: '提交成功' });
+		selectedFile.value = null;
+		if (assignment.value) {
+			assignment.value.statusText = '已提交';
+			assignment.value.statusClass = 'active';
+		}
 	} catch (e) {
+		uni.showToast({ title: e?.message || '提交失败', icon: 'none' });
+	} finally {
+		clearInterval(uploadProgressTimer);
 		isUploading.value = false;
-		uni.showToast({ title: '提交失败', icon: 'none' });
+		processingText.value = '';
 	}
+};
+
+const compressVideo = (src) => {
+	return new Promise((resolve, reject) => {
+		uni.compressVideo({
+			src,
+			quality: 'medium',
+			success: (res) => {
+				resolve({
+					path: res.tempFilePath,
+					size: res.size || 0
+				});
+			},
+			fail: (err) => {
+				// 压缩失败则回退原视频，避免阻断提交流程
+				resolve({ path: src, size: 0 });
+			}
+		});
+	});
+};
+
+const uploadToYolo = (url, filePath) => {
+	return new Promise((resolve, reject) => {
+		uni.uploadFile({
+			url,
+			filePath,
+			name: 'file',
+			success: (res) => {
+				if (res.statusCode >= 200 && res.statusCode < 300) {
+					resolve(res);
+					return;
+				}
+				reject(new Error(`AI服务调用失败(${res.statusCode})`));
+			},
+			fail: () => {
+				reject(new Error('AI服务调用失败'));
+			}
+		});
+	});
+};
+
+const fetchAiStats = async (homeworkId, studentId, poseType) => {
+	try {
+		const resp = await request.get(
+			`/video/query_records?homework_id=${encodeURIComponent(homeworkId)}&student_id=${encodeURIComponent(studentId)}&pose_type=${encodeURIComponent(poseType)}`
+		);
+		const rows = Array.isArray(resp?.data) ? resp.data : [];
+		return rows.length > 0 ? rows[0] : null;
+	} catch (e) {
+		return null;
+	}
+};
+
+const buildAiFeedback = (stats) => {
+	if (!stats) return '';
+	const total = Number(stats.total_count) || 0;
+	const correct = Number(stats.correct_count) || 0;
+	const incorrect = Number(stats.incorrect_count) || 0;
+	if (total > 0) {
+		const rate = Math.round((correct / total) * 100);
+		return `本次动作共完成${total}次，其中标准${correct}次，不标准${incorrect}次，标准率${rate}%。`;
+	}
+	return '';
+};
+
+const removeFile = () => {
+	selectedFile.value = null;
+	uploadProgress.value = 0;
 };
 
 const formatDate = (s) => {

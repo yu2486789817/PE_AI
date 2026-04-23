@@ -1,83 +1,77 @@
-<template>
-  <div
-    :class="[
-      'h-screen bg-white border-r border-slate-200 transition-all duration-300 flex flex-col shadow-xl z-50 fixed left-0 top-0',
-      isCollapsed ? 'w-20' : 'w-64'
-    ]"
-  >
-    <!-- 顶部 Logo & Toggle -->
-    <div class="p-6 flex items-center justify-between border-b border-slate-50">
-      <div v-if="!isCollapsed" class="flex items-center space-x-3 overflow-hidden whitespace-nowrap">
-        <div class="p-2 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-100">
-          <ActivityIcon class="w-6 h-6" />
+﻿<template>
+  <div :class="['h-screen border-r border-web-line-200 bg-white shadow-card fixed left-0 top-0 z-50 flex flex-col transition-all duration-300', isCollapsed ? 'w-20' : 'w-64']">
+    <div class="flex items-center justify-between border-b border-web-line-100 p-4">
+        <div v-if="!isCollapsed" class="flex items-center gap-2">
+          <div class="rounded-lg bg-web-primary-500 p-2 text-white">
+            <ActivityIcon class="h-5 w-5" />
+          </div>
+          <div>
+            <p class="text-sm font-bold text-web-ink-900">Smart PE</p>
+            <p class="text-xs text-web-ink-500">{{ productSubtitle }}</p>
+          </div>
         </div>
-        <span class="text-xl font-black text-slate-900 tracking-tighter uppercase italic">Smart PE</span>
-      </div>
-      <button
-        @click="toggleSidebar"
-        class="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-blue-600 transition-all kinetic-button"
-      >
-        <MenuIcon v-if="isCollapsed" class="w-6 h-6" />
-        <ChevronLeftIcon v-else class="w-6 h-6" />
+      <button @click="toggleSidebar" class="rounded-lg p-2 text-web-ink-500 hover:bg-web-surface-200">
+        <MenuIcon v-if="isCollapsed" class="h-5 w-5" />
+        <ChevronLeftIcon v-else class="h-5 w-5" />
       </button>
     </div>
 
-    <!-- 菜单区域 -->
-    <div class="flex-1 overflow-y-auto py-6 px-4 space-y-2 custom-scrollbar">
-      <div v-for="item in menuItems" :key="item.path">
-        <router-link
-          :to="item.path"
-          :class="[
-            'flex items-center p-3.5 rounded-2xl transition-all group relative',
-            isActive(item)
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-blue-600'
-          ]"
-        >
-          <component :is="item.icon" class="w-6 h-6 flex-shrink-0" />
-          <span
-            v-if="!isCollapsed"
-            class="ml-4 font-bold text-sm tracking-tight whitespace-nowrap transition-opacity"
-          >
-            {{ item.name }}
-          </span>
-          <!-- Tooltip on collapsed -->
-          <div
-            v-if="isCollapsed"
-            class="absolute left-full ml-4 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 font-bold"
-          >
-            {{ item.name }}
-          </div>
-        </router-link>
-      </div>
-    </div>
-
-    <!-- 底部区域 -->
-    <div class="p-4 border-t border-slate-50">
-      <div v-if="!isCollapsed" class="mb-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-blue-600 font-black shadow-sm">
-          {{ userInitial }}
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm font-black text-slate-900 truncate">{{ userName }}</p>
-          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ userRoleText }}</p>
-        </div>
-      </div>
-      <button
-        @click="handleLogout"
+    <div class="flex-1 overflow-y-auto p-3 space-y-1">
+      <router-link
+        v-for="item in menuItems"
+        :key="item.path"
+        :to="item.path"
         :class="[
-          'w-full flex items-center p-3.5 rounded-2xl transition-all text-slate-400 hover:bg-red-50 hover:text-red-600 font-bold group relative',
-          isCollapsed ? 'justify-center' : ''
+          'group relative flex items-center rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
+          isActive(item) ? 'bg-web-primary-500 text-white' : 'text-web-ink-600 hover:bg-web-surface-200'
         ]"
       >
-        <LogOutIcon class="w-6 h-6" />
-        <span v-if="!isCollapsed" class="ml-4 text-sm tracking-tight">退出登录</span>
+        <component :is="item.icon" class="h-5 w-5" />
+        <span v-if="!isCollapsed" class="ml-3">{{ item.name }}</span>
+        <span v-if="isCollapsed" class="absolute left-full ml-2 hidden rounded bg-web-ink-900 px-2 py-1 text-xs text-white group-hover:block">{{ item.name }}</span>
+      </router-link>
+    </div>
+
+    <div class="border-t border-web-line-100 p-3">
+      <div
+        v-if="!isCollapsed"
+        class="relative mb-2 overflow-hidden rounded-2xl border border-web-line-200 bg-gradient-to-br from-web-surface-100 via-white to-blue-50/70 px-3 pb-3 pt-4 shadow-card"
+      >
         <div
-          v-if="isCollapsed"
-          class="absolute left-full ml-4 px-3 py-2 bg-red-600 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 font-bold"
-        >
-          退出登录
+          class="pointer-events-none absolute left-0 right-0 top-0 h-1.5 bg-gradient-to-r from-web-primary-500 via-blue-400 to-cyan-300"
+        ></div>
+        <div class="pointer-events-none absolute -right-7 -top-7 h-16 w-16 rounded-full bg-web-primary-200/40"></div>
+        <div class="pointer-events-none absolute -bottom-8 -left-8 h-20 w-20 rounded-full bg-blue-200/30"></div>
+
+        <div class="relative">
+          <div class="flex items-center gap-3">
+            <div
+              class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-web-primary-500 to-web-primary-700 text-base font-bold text-white shadow-soft"
+            >
+              {{ userInitial }}
+              <span class="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-blue-400"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[15px] font-bold text-web-ink-900">{{ userName }}</p>
+              <p class="mt-0.5 text-xs text-web-ink-500">{{ productSubtitle }}</p>
+            </div>
+          </div>
+
+          <div class="mt-3 flex items-center gap-2 text-[11px]">
+            <span
+              class="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700"
+            >
+              {{ userRoleText }}
+            </span>
+            <span class="rounded-full border border-web-line-200 bg-white/80 px-2.5 py-1 font-medium text-web-ink-600">
+              学号/工号 {{ userIdText }}
+            </span>
+          </div>
         </div>
+      </div>
+      <button class="flex w-full items-center rounded-lg px-3 py-2 text-sm font-semibold text-web-danger-600 hover:bg-red-50" @click="handleLogout">
+        <LogOutIcon class="h-5 w-5" />
+        <span v-if="!isCollapsed" class="ml-3">退出登录</span>
       </button>
     </div>
   </div>
@@ -98,9 +92,7 @@ import {
   LogOut as LogOutIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
-  ClipboardList as ClipboardListIcon,
-  BarChart3 as BarChart3Icon,
-  FileText as FileTextIcon
+  ClipboardList as ClipboardListIcon
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -110,24 +102,29 @@ const isCollapsed = ref(false)
 const user = ref(JSON.parse(localStorage.getItem('user') || '{}'))
 const userName = computed(() => user.value.name || user.value.username || 'User')
 const userRole = computed(() => user.value.role || 'student')
-const userInitial = computed(() => userName.value.charAt(0).toUpperCase())
-const userRoleText = computed(() => userRole.value === 'teacher' ? '教师' : '学生')
+const userRoleText = computed(() => (userRole.value === 'teacher' ? '教师' : '学生'))
+const productSubtitle = computed(() => (userRole.value === 'teacher' ? '教师管理端' : '学生学习端'))
+const userIdText = computed(() => user.value.id || '--')
+const userInitial = computed(() => {
+  const text = String(userName.value || '').trim()
+  return text ? text.slice(0, 1).toUpperCase() : 'U'
+})
 
 const fetchUserName = async () => {
-  if (!user.value.id || !user.value.token) return
+  const activeToken = (localStorage.getItem('token') || user.value.token || '').trim()
+  if (!user.value.id || !activeToken) return
 
   try {
     let result
     if (user.value.role === 'teacher') {
-      result = await getTeacherInfo(user.value.id, user.value.token, '1', user.value.id)
+      result = await getTeacherInfo(user.value.id, activeToken, '1', user.value.id)
     } else {
-      result = await getStudentInfo(user.value.id, user.value.token, '1', user.value.id)
+      result = await getStudentInfo(user.value.id, activeToken, '0', user.value.id)
     }
 
     if (result.success && result.data && result.data.name) {
-      // 更新本地状态
       user.value.name = result.data.name
-      // 同步到 localStorage
+      user.value.token = activeToken
       localStorage.setItem('user', JSON.stringify(user.value))
     }
   } catch (error) {
@@ -135,19 +132,10 @@ const fetchUserName = async () => {
   }
 }
 
-onMounted(() => {
-  fetchUserName()
-})
+onMounted(fetchUserName)
 
 const currentPath = computed(() => route.path)
-
-// 精确匹配短路径，前缀匹配长路径
-const isActive = (item) => {
-  if (item.exact) {
-    return currentPath.value === item.path
-  }
-  return currentPath.value.startsWith(item.path)
-}
+const isActive = (item) => (item.exact ? currentPath.value === item.path : currentPath.value.startsWith(item.path))
 
 const teacherMenu = [
   { name: '工作台', path: '/teacher/dashboard', icon: HomeIcon },
@@ -156,16 +144,16 @@ const teacherMenu = [
   { name: '作业管理', path: '/teacher/assignments', icon: ClipboardListIcon },
   { name: '视频分析', path: '/teacher/videos', icon: VideoIcon },
   { name: 'AI 助手', path: '/assistant', icon: BotIcon },
-  { name: '个人信息', path: '/profile', icon: UserIcon },
+  { name: '个人信息', path: '/profile', icon: UserIcon }
 ]
 
 const studentMenu = [
   { name: '学习概览', path: '/student', icon: HomeIcon, exact: true },
   { name: 'AI 助手', path: '/assistant', icon: BotIcon },
-  { name: '个人信息', path: '/profile', icon: UserIcon },
+  { name: '个人信息', path: '/profile', icon: UserIcon }
 ]
 
-const menuItems = computed(() => userRole === 'teacher' ? teacherMenu : studentMenu)
+const menuItems = computed(() => (userRole.value === 'teacher' ? teacherMenu : studentMenu))
 
 const toggleSidebar = () => {
   isCollapsed.value = !isCollapsed.value
@@ -178,19 +166,3 @@ const handleLogout = () => {
 
 defineExpose({ isCollapsed })
 </script>
-
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #f1f5f9;
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #e2e8f0;
-}
-</style>

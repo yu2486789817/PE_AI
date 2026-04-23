@@ -194,7 +194,10 @@ public class UserService {
 
     // ==================== CHANGE PASSWORD ====================
 
-    public Result<Void> changeTeacherPassword(String id, String oldPassword, String newPassword) {
+    public Result<Void> changeTeacherPassword(String id, String jwt, String oldPassword, String newPassword) {
+        Result<Void> authResult = checkJwt(1, id, jwt);
+        if (authResult.getCode() < 0) return authResult;
+
         Teacher teacher = teacherMapper.selectById(id);
         if (teacher == null) return Result.error(-21, "User not found");
         if (!teacher.getPassword().equals(oldPassword)) return Result.error(-23, "Old Password Error");
@@ -204,7 +207,10 @@ public class UserService {
         return Result.success();
     }
 
-    public Result<Void> changeStudentPassword(String id, String oldPassword, String newPassword) {
+    public Result<Void> changeStudentPassword(String id, String jwt, String oldPassword, String newPassword) {
+        Result<Void> authResult = checkJwt(0, id, jwt);
+        if (authResult.getCode() < 0) return authResult;
+
         Student student = studentMapper.selectById(id);
         if (student == null) return Result.error(-21, "User not found");
         if (!student.getPassword().equals(oldPassword)) return Result.error(-23, "Old Password Error");

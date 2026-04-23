@@ -1,66 +1,65 @@
-@import './base.css';
+﻿@import './base.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 #app {
   margin: 0 auto;
-  font-weight: normal;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-weight: 400;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 font-semibold text-white transition-all;
+    background: linear-gradient(120deg, var(--web-primary-500) 0%, #2690f5 100%);
+    box-shadow: 0 8px 20px rgba(35, 109, 242, 0.28);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(35, 109, 242, 0.35);
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center gap-2 rounded-lg border px-4 py-2 font-semibold transition-colors;
+    border-color: var(--web-line-200);
+    color: var(--web-ink-700);
+    background: var(--web-surface-card);
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 font-semibold text-white transition-all;
+    background: var(--web-danger-600);
+  }
+
+  .input-base {
+    @apply w-full rounded-lg border px-3 py-2 text-sm outline-none transition-all;
+    border-color: var(--web-line-200);
+    background: var(--web-surface-card);
+    color: var(--web-ink-900);
+  }
+
+  .input-base:focus {
+    border-color: var(--web-primary-500);
+    box-shadow: 0 0 0 3px rgba(35, 109, 242, 0.14);
+  }
+
+  .page-shell {
+    @apply min-h-screen font-display;
+    background: transparent;
+  }
+
+  .page-container {
+    @apply mx-auto w-full max-w-7xl space-y-6 px-4 py-6 md:px-6;
+  }
 }
 
 @layer utilities {
-  /* Kinetic Precision Utilities */
-  .kinetic-shadow {
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
-    transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  
-  .kinetic-shadow:hover {
-    box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.1);
-    transform: translateY(-2px);
-  }
-
   .kinetic-button {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s var(--web-ease), box-shadow 0.2s var(--web-ease);
   }
 
   .kinetic-button:active {
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
-
-  .glass-card {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(226, 232, 240, 0.8);
-  }
-
-  /* Custom minimal scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-  }
-}
-
-/* Vue Transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }

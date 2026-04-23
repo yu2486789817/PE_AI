@@ -85,24 +85,36 @@ public class UserController {
     // ==================== CHANGE PASSWORD ====================
 
     @PostMapping("/teacher/password")
-    public Result<Void> changeTeacherPassword(@RequestBody Map<String, String> body) {
-        return userService.changeTeacherPassword(getParam(body, "id"), getParam(body, "old_password"), getParam(body, "new_password"));
+    public Result<Void> changeTeacherPassword(@RequestBody Map<String, String> body,
+                                              HttpServletRequest request) {
+        return userService.changeTeacherPassword(
+                getParam(body, "id"), RequestValueResolver.resolveJwt(body, request),
+                getParam(body, "old_password"), getParam(body, "new_password"));
     }
 
     @PostMapping("/student/password")
-    public Result<Void> changeStudentPassword(@RequestBody Map<String, String> body) {
-        return userService.changeStudentPassword(getParam(body, "id"), getParam(body, "old_password"), getParam(body, "new_password"));
+    public Result<Void> changeStudentPassword(@RequestBody Map<String, String> body,
+                                              HttpServletRequest request) {
+        return userService.changeStudentPassword(
+                getParam(body, "id"), RequestValueResolver.resolveJwt(body, request),
+                getParam(body, "old_password"), getParam(body, "new_password"));
     }
 
     // ==================== GET INFO ====================
 
     @GetMapping("/teacher/info")
-    public Result<Teacher> getTeacherInfo(@RequestParam String id) {
+    public Result<Teacher> getTeacherInfo(@RequestParam String id,
+                                          @RequestParam String jwt) {
+        Result<Void> authResult = userService.checkJwt(1, id, RequestValueResolver.normalizeBearerToken(jwt));
+        if (authResult.getCode() < 0) return Result.error(authResult.getCode(), authResult.getMessage());
         return userService.getTeacherInfo(id);
     }
 
     @GetMapping("/student/info")
-    public Result<Student> getStudentInfo(@RequestParam String id) {
+    public Result<Student> getStudentInfo(@RequestParam String id,
+                                          @RequestParam String jwt) {
+        Result<Void> authResult = userService.checkJwt(0, id, RequestValueResolver.normalizeBearerToken(jwt));
+        if (authResult.getCode() < 0) return Result.error(authResult.getCode(), authResult.getMessage());
         return userService.getStudentInfo(id);
     }
 }

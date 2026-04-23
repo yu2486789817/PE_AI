@@ -1,136 +1,265 @@
-<template>
+﻿<template>
 	<PageLayout>
 		<view class="container">
-		<view class="banner">
-			<text class="banner-title">智慧运动课堂</text>
-			<text class="banner-sub">记录每一次进步，让训练反馈更清晰、更科学。</text>
-		</view>
+			<MobilePageHeader title="智慧运动课堂" subtitle="记录每一次进步，让训练反馈更科学。" />
 
-		<view class="action-grid">
-			<view class="action-item" @click="goTo('/pages/assignments/list')">
-				<view class="action-icon text-blue">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-						<polyline points="14 2 14 8 20 8"></polyline>
-						<line x1="16" y1="13" x2="8" y2="13"></line>
-						<line x1="16" y1="17" x2="8" y2="17"></line>
-						<polyline points="10 9 9 9 8 9"></polyline>
-					</svg>
+			<InfoCard>
+				<view class="action-grid">
+					<view class="action-item" @click="goTo('/pages/assignments/list')">
+						<text class="action-title">我的作业</text>
+						<text class="action-desc">查看待完成任务</text>
+					</view>
+					<view class="action-item" @click="goTo('/pages/assistant/chat')">
+						<text class="action-title">AI 助手</text>
+						<text class="action-desc">获取训练建议</text>
+					</view>
 				</view>
-				<text class="action-text">我的作业</text>
-			</view>
-			<view class="action-item" @click="goTo('/pages/assistant/chat')">
-				<view class="action-icon text-blue">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-						<rect x="3" y="11" width="18" height="10" rx="2"></rect>
-						<circle cx="12" cy="5" r="2"></circle>
-						<path d="M12 7v4"></path>
-						<line x1="8" y1="16" x2="8" y2="16"></line>
-						<line x1="16" y1="16" x2="16" y2="16"></line>
-					</svg>
+			</InfoCard>
+
+			<InfoCard title="个性化健康报告" class="mt-3">
+				<view class="report-entry" @click="openHealthReportDialog">
+					<text class="report-entry-title">基于当前情况生成长期训练建议</text>
+					<text class="report-entry-arrow">></text>
 				</view>
-				<text class="action-text">AI 助手</text>
+			</InfoCard>
+
+			<view class="section-header mt-4">
+				<text class="section-title">我的课程</text>
+				<button class="btn-outline" @click="showJoinDialog = true">加入课程</button>
 			</view>
-		</view>
 
-		<view class="section-header">
-			<text class="section-title">我的课程</text>
-			<text class="add-btn" @click="showJoinDialog = true">+ 加入课程</text>
-		</view>
+			<view class="loading" v-if="loadingCourses"><text class="loading-text">正在加载课程...</text></view>
+			<MobileEmptyState v-else-if="courses.length === 0" title="暂无课程" description="点击“加入课程”输入邀请码开始学习。" />
 
-		<view class="loading" v-if="loadingCourses"><text class="loading-text">正在加载课程...</text></view>
-
-		<view class="empty" v-else-if="courses.length === 0">
-			<text class="empty-text">暂无课程，点击右上角“加入课程”开始学习</text>
-		</view>
-
-		<view class="course-card" v-for="c in courses" :key="c.id" @click="goToCourse(c)">
-			<view class="course-top">
-				<text class="course-name">{{ c.name }}</text>
-				<text :class="['course-status', c.statusClass]">{{ c.statusText }}</text>
+			<view v-else class="list-wrap">
+				<ListCard v-for="c in courses" :key="c.id" @click="goToCourse(c)">
+					<view class="course-top">
+						<text class="course-name">{{ c.name }}</text>
+						<StatusChip :value="c.isActive" />
+					</view>
+					<text class="course-desc">{{ c.description || '暂无课程描述' }}</text>
+					<view class="course-bottom">
+						<text class="course-meta">作业：{{ c.completedAssignments }}/{{ c.totalAssignments }}</text>
+						<text class="course-meta">完成率：{{ c.completionRate }}%</text>
+					</view>
+				</ListCard>
 			</view>
-			<text class="course-desc">{{ c.description }}</text>
-			<view class="course-bottom">
-				<text class="course-meta">作业: {{ c.completedAssignments }}/{{ c.totalAssignments }}</text>
-				<text class="course-meta">完成率: {{ c.completionRate }}%</text>
-			</view>
-		</view>
 
-		<view class="mask" v-if="showJoinDialog" @click="showJoinDialog = false">
-			<view class="dialog" @click.stop>
-				<text class="dialog-title">加入课程</text>
-				<input class="dialog-input" v-model="courseCode" placeholder="请输入 6 位课程码" maxlength="6" />
-				<view class="dialog-btns">
-					<button class="dialog-cancel" @click="showJoinDialog = false">取消</button>
-					<button class="dialog-confirm" @click="handleJoin">加入</button>
+			<view class="mask" v-if="showJoinDialog" @click="showJoinDialog = false">
+				<view class="dialog" @click.stop>
+					<text class="dialog-title">加入课程</text>
+					<input class="input-base" v-model="courseCode" placeholder="请输入 6 位课程码" maxlength="6" />
+					<view class="dialog-btns">
+						<button class="btn-outline" @click="showJoinDialog = false">取消</button>
+						<button class="btn-primary" @click="handleJoin">加入</button>
+					</view>
 				</view>
 			</view>
-		</view>
+
+			<view class="health-mask" v-if="showHealthDialog" @click="closeHealthReportDialog">
+				<view class="health-dialog" @click.stop>
+					<view class="health-head">
+						<text class="health-title">个性化健康报告</text>
+						<text class="health-close" @click="closeHealthReportDialog">×</text>
+					</view>
+					<input class="input-base" v-model="healthHeight" type="number" placeholder="身高(cm，可选)" />
+					<input class="input-base mt-2" v-model="healthWeight" type="number" placeholder="体重(kg，可选)" />
+					<textarea class="textarea-base mt-2" v-model="healthQuery" auto-height maxlength="500" placeholder="请输入你希望咨询的问题，例如：给我一个 4 周体能提升训练计划。" />
+					<button class="btn-primary mt-3" :disabled="healthLoading || !healthQuery.trim()" @click="generateHealthReport">
+						{{ healthLoading ? '生成中...' : '生成健康报告' }}
+					</button>
+					<view class="health-error" v-if="healthError"><text>{{ healthError }}</text></view>
+					<scroll-view scroll-y class="health-report" v-if="healthContent">
+						<text class="health-report-text">{{ healthContent }}</text>
+					</scroll-view>
+					<view class="health-actions">
+						<button class="btn-outline" v-if="healthContent" @click="downloadHealthReport">下载</button>
+						<button class="btn-outline" @click="closeHealthReportDialog">关闭</button>
+					</view>
+				</view>
+			</view>
 		</view>
 	</PageLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { getStudentCourses, joinCourse } from '@/services/course';
-import PageLayout from '@/components/PageLayout.vue';
+import { ref, onMounted } from 'vue'
+import { getStudentCourses, joinCourse } from '@/services/course'
+import request from '@/services/request'
+import PageLayout from '@/components/PageLayout.vue'
+import MobilePageHeader from '@/components/ui/MobilePageHeader.vue'
+import InfoCard from '@/components/ui/InfoCard.vue'
+import ListCard from '@/components/ui/ListCard.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import MobileEmptyState from '@/components/ui/MobileEmptyState.vue'
 
-const courses = ref([]);
-const loadingCourses = ref(false);
-const showJoinDialog = ref(false);
-const courseCode = ref('');
+const courses = ref([])
+const loadingCourses = ref(false)
+const showJoinDialog = ref(false)
+const courseCode = ref('')
+const showHealthDialog = ref(false)
+const healthHeight = ref('')
+const healthWeight = ref('')
+const healthQuery = ref('')
+const healthContent = ref('')
+const healthError = ref('')
+const healthLoading = ref(false)
 
 onMounted(() => {
-	fetchCourses();
-});
+	fetchCourses()
+})
+
+const fetchCourseStats = async (courseId, studentId, token) => {
+	try {
+		const hwResp = await request.post('/Homework/get_homework_id_by_course', {
+			first: '0',
+			second: studentId,
+			third: token,
+			fourth: courseId
+		})
+
+		if (!hwResp.data?.success || !hwResp.data?.data || hwResp.data.data === 'NULL') {
+			return { totalAssignments: 0, completedAssignments: 0 }
+		}
+
+		const homeworkIds = hwResp.data.data.split('\t\r').filter(Boolean)
+		let completedAssignments = 0
+		for (const hwId of homeworkIds) {
+			const submitResp = await request.post('/Homework/get_submit_id_by_student', {
+				first: '0',
+				second: studentId,
+				third: token,
+				fourth: hwId,
+				fifth: studentId
+			})
+			if (submitResp.data?.success && submitResp.data?.data && submitResp.data.data !== 'NULL') {
+				completedAssignments += 1
+			}
+		}
+
+		return {
+			totalAssignments: homeworkIds.length,
+			completedAssignments
+		}
+	} catch (e) {
+		return { totalAssignments: 0, completedAssignments: 0 }
+	}
+}
 
 const fetchCourses = async () => {
-	loadingCourses.value = true;
-	const user = uni.getStorageSync('user');
+	loadingCourses.value = true
+	const user = uni.getStorageSync('user')
+	const token = uni.getStorageSync('token')
 	if (!user?.id) {
-		loadingCourses.value = false;
-		return;
+		loadingCourses.value = false
+		return
 	}
 
-	const res = await getStudentCourses(user.id);
+	const res = await getStudentCourses(user.id)
 	if (res.success && res.data) {
-		courses.value = res.data.map(c => {
-			const active = c.isActive === '1';
-			return {
-				...c,
-				description: c.info || '',
-				statusText: active ? '进行中' : '已结束',
-				statusClass: active ? 'active' : 'ended',
-				totalAssignments: 0,
-				completedAssignments: 0,
-				completionRate: 0
-			};
-		});
+		const enriched = await Promise.all(
+			res.data.map(async (c) => {
+				const stats = await fetchCourseStats(c.id, user.id, token)
+				return {
+					...c,
+					description: c.info || '',
+					totalAssignments: stats.totalAssignments,
+					completedAssignments: stats.completedAssignments,
+					completionRate: stats.totalAssignments > 0 ? Math.round((stats.completedAssignments / stats.totalAssignments) * 100) : 0
+				}
+			})
+		)
+		courses.value = enriched
 	} else {
-		courses.value = [];
+		courses.value = []
 	}
-	loadingCourses.value = false;
-};
+	loadingCourses.value = false
+}
 
 const handleJoin = async () => {
 	if (!courseCode.value || courseCode.value.length !== 6) {
-		uni.showToast({ title: '请输入 6 位课程码', icon: 'none' });
-		return;
+		uni.showToast({ title: '请输入 6 位课程码', icon: 'none' })
+		return
 	}
-	const user = uni.getStorageSync('user');
-	const res = await joinCourse(user?.id, courseCode.value);
+	const user = uni.getStorageSync('user')
+	const res = await joinCourse(user?.id, courseCode.value)
 	if (res.success) {
-		uni.showToast({ title: '加入成功' });
-		showJoinDialog.value = false;
-		courseCode.value = '';
-		fetchCourses();
+		uni.showToast({ title: '加入成功' })
+		showJoinDialog.value = false
+		courseCode.value = ''
+		fetchCourses()
 	} else {
-		uni.showToast({ title: res.message || '加入失败', icon: 'none' });
+		uni.showToast({ title: res.message || '加入失败', icon: 'none' })
 	}
-};
+}
 
-const goTo = (url) => uni.switchTab({ url });
-const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}` });
+const openHealthReportDialog = () => {
+	showHealthDialog.value = true
+	healthError.value = ''
+	healthContent.value = ''
+	healthQuery.value = ''
+}
+
+const closeHealthReportDialog = () => {
+	if (healthLoading.value) return
+	showHealthDialog.value = false
+}
+
+const generateHealthReport = async () => {
+	const user = uni.getStorageSync('user') || {}
+	if (!user?.id || !healthQuery.value.trim()) return
+	healthLoading.value = true
+	healthError.value = ''
+	healthContent.value = ''
+	try {
+		const payload = {
+			student_id: user.id,
+			analysis_type: 'personalized_tips',
+			query: healthQuery.value.trim()
+		}
+		if (healthHeight.value || healthWeight.value) {
+			payload.student_info = {}
+			if (healthHeight.value) payload.student_info.height = healthHeight.value
+			if (healthWeight.value) payload.student_info.weight = healthWeight.value
+		}
+		const response = await request.post('/chat/api/analysis/generate', payload)
+		if (response.data?.success && response.data?.data?.report) {
+			healthContent.value = response.data.data.report
+			return
+		}
+		healthError.value = response.data?.error || '生成失败'
+	} catch (err) {
+		healthError.value = err?.message || '生成失败，请稍后重试'
+	} finally {
+		healthLoading.value = false
+	}
+}
+
+const downloadHealthReport = () => {
+	if (!healthContent.value) return
+	const fileName = `健康报告_${new Date().toISOString().slice(0, 10)}.md`
+	// #ifdef H5
+	const blob = new Blob([healthContent.value], { type: 'text/markdown;charset=utf-8' })
+	const url = URL.createObjectURL(blob)
+	const link = document.createElement('a')
+	link.href = url
+	link.download = fileName
+	document.body.appendChild(link)
+	link.click()
+	document.body.removeChild(link)
+	URL.revokeObjectURL(url)
+	// #endif
+
+	// #ifndef H5
+	uni.setClipboardData({
+		data: healthContent.value,
+		success: () => uni.showToast({ title: '报告内容已复制', icon: 'none' })
+	})
+	// #endif
+}
+
+const goTo = (url) => uni.switchTab({ url })
+const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}` })
 </script>
 
 <style scoped>
@@ -139,117 +268,66 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 	min-height: 100vh;
 }
 
-.banner {
-	position: relative;
-	overflow: hidden;
-	border-radius: 30rpx;
-	padding: 52rpx 36rpx;
-	margin-bottom: 26rpx;
-	background: linear-gradient(125deg, #1554e6 0%, #2787ff 48%, #20c3ff 100%);
-	box-shadow: 0 20rpx 40rpx rgba(17, 66, 170, 0.28);
-}
-
-.banner::after {
-	content: '';
-	position: absolute;
-	width: 260rpx;
-	height: 260rpx;
-	border-radius: 50%;
-	background: rgba(255, 255, 255, 0.16);
-	right: -110rpx;
-	top: -110rpx;
-}
-
-.banner-title {
-	display: block;
-	position: relative;
-	font-size: 42rpx;
-	font-weight: 700;
-	color: #fff;
-}
-
-.banner-sub {
-	display: block;
-	position: relative;
-	margin-top: 12rpx;
-	font-size: 24rpx;
-	line-height: 1.6;
-	color: rgba(255, 255, 255, 0.9);
-}
-
 .action-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 18rpx;
-	margin-bottom: 28rpx;
+	gap: 16rpx;
 }
 
 .action-item {
-	height: 148rpx;
-	background: rgba(255, 255, 255, 0.9);
-	border: 2rpx solid rgba(255, 255, 255, 0.85);
-	border-radius: 24rpx;
+	border: 2rpx solid var(--color-line-200);
+	border-radius: var(--radius-lg);
+	padding: 24rpx;
+	background: var(--color-surface-100);
+}
+
+.action-title {
+	display: block;
+	font-size: 28rpx;
+	font-weight: 700;
+	color: var(--color-ink-900);
+}
+
+.action-desc {
+	display: block;
+	margin-top: 8rpx;
+	font-size: 22rpx;
+	color: var(--color-ink-500);
+}
+
+.report-entry {
 	display: flex;
-	flex-direction: column;
+	justify-content: space-between;
 	align-items: center;
-	justify-content: center;
-	box-shadow: 0 10rpx 24rpx rgba(23, 53, 120, 0.1);
 }
 
-.action-icon {
-	width: 52rpx;
-	height: 52rpx;
-	margin-bottom: 12rpx;
-}
-
-.action-text {
+.report-entry-title {
 	font-size: 25rpx;
-	font-weight: 600;
-	color: #1f3159;
+	color: var(--color-ink-700);
+}
+
+.report-entry-arrow {
+	font-size: 28rpx;
+	color: var(--color-ink-500);
 }
 
 .section-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 16rpx;
+	margin-bottom: 14rpx;
 }
 
 .section-title {
 	font-size: 31rpx;
 	font-weight: 700;
-	color: #1e2b49;
+	color: var(--color-ink-900);
 }
 
-.add-btn {
-	padding: 12rpx 22rpx;
-	font-size: 24rpx;
-	font-weight: 600;
-	color: #1c5fed;
-	background: rgba(29, 99, 255, 0.1);
-	border-radius: 999rpx;
-}
-
-.loading,
-.empty {
-	padding: 72rpx 20rpx;
-	text-align: center;
-}
-
-.loading-text,
-.empty-text {
-	font-size: 24rpx;
-	color: #6a7898;
-	line-height: 1.7;
-}
-
-.course-card {
-	background: rgba(255, 255, 255, 0.9);
-	border: 2rpx solid rgba(255, 255, 255, 0.86);
-	border-radius: 24rpx;
-	padding: 24rpx;
-	margin-bottom: 18rpx;
-	box-shadow: 0 10rpx 24rpx rgba(25, 54, 118, 0.1);
+.list-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 14rpx;
 }
 
 .course-top {
@@ -262,32 +340,15 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 .course-name {
 	font-size: 30rpx;
 	font-weight: 700;
-	color: #1c2b4f;
-}
-
-.course-status {
-	padding: 6rpx 16rpx;
-	border-radius: 999rpx;
-	font-size: 21rpx;
-	font-weight: 600;
-}
-
-.active {
-	background: rgba(18, 185, 129, 0.14);
-	color: #0d8b5f;
-}
-
-.ended {
-	background: rgba(111, 122, 150, 0.16);
-	color: #5b6683;
+	color: var(--color-ink-900);
 }
 
 .course-desc {
 	display: block;
 	font-size: 24rpx;
 	line-height: 1.6;
-	color: #5d6c8e;
-	margin-bottom: 14rpx;
+	color: var(--color-ink-500);
+	margin-bottom: 12rpx;
 }
 
 .course-bottom {
@@ -297,25 +358,37 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 
 .course-meta {
 	font-size: 22rpx;
-	color: #6a7898;
+	color: var(--color-ink-600);
 }
 
-.mask {
+.loading {
+	padding: 72rpx 20rpx;
+	text-align: center;
+}
+
+.loading-text {
+	font-size: 24rpx;
+	color: var(--color-ink-500);
+}
+
+.mask,
+.health-mask {
 	position: fixed;
 	inset: 0;
-	background: rgba(10, 20, 44, 0.35);
+	background: rgba(10, 20, 44, 0.45);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 999;
+	z-index: 1000;
+	padding: 24rpx;
 }
 
-.dialog {
-	width: 84%;
+.dialog,
+.health-dialog {
+	width: 100%;
 	background: #fff;
-	border-radius: 28rpx;
-	padding: 36rpx;
-	box-shadow: 0 20rpx 40rpx rgba(19, 44, 103, 0.2);
+	border-radius: var(--radius-xl);
+	padding: 24rpx;
 }
 
 .dialog-title {
@@ -323,44 +396,71 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 	text-align: center;
 	font-size: 32rpx;
 	font-weight: 700;
-	color: #1d2d50;
-	margin-bottom: 24rpx;
-}
-
-.dialog-input {
-	height: 88rpx;
-	border-radius: 16rpx;
-	padding: 0 20rpx;
-	text-align: center;
-	font-size: 30rpx;
-	letter-spacing: 8rpx;
-	background: #f2f6ff;
-	border: 2rpx solid #dce7ff;
+	color: var(--color-ink-900);
+	margin-bottom: 20rpx;
 }
 
 .dialog-btns {
 	display: flex;
-	gap: 16rpx;
-	margin-top: 24rpx;
+	gap: 12rpx;
+	margin-top: 16rpx;
 }
 
-.dialog-cancel,
-.dialog-confirm {
+.dialog-btns button {
 	flex: 1;
-	height: 80rpx;
-	line-height: 80rpx;
-	font-size: 27rpx;
-	font-weight: 600;
-	border-radius: 999rpx;
 }
 
-.dialog-cancel {
-	background: #f0f3fb;
-	color: #4f5d7f;
+.health-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10rpx;
 }
 
-.dialog-confirm {
-	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
-	color: #fff;
+.health-title {
+	font-size: 30rpx;
+	font-weight: 700;
+	color: var(--color-ink-900);
+}
+
+.health-close {
+	font-size: 44rpx;
+	line-height: 1;
+	color: var(--color-ink-500);
+}
+
+.health-error {
+	margin-top: 10rpx;
+	padding: 12rpx;
+	border-radius: 10rpx;
+	background: #ffe9ea;
+	color: #bf3d3d;
+	font-size: 22rpx;
+}
+
+.health-report {
+	margin-top: 12rpx;
+	max-height: 320rpx;
+	padding: 14rpx;
+	border-radius: 12rpx;
+	background: #f8faff;
+	border: 1rpx solid #e2e9fc;
+}
+
+.health-report-text {
+	font-size: 23rpx;
+	line-height: 1.7;
+	color: var(--color-ink-600);
+	white-space: pre-wrap;
+}
+
+.health-actions {
+	display: flex;
+	gap: 12rpx;
+	margin-top: 14rpx;
+}
+
+.health-actions button {
+	flex: 1;
 }
 </style>

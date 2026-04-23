@@ -1,7 +1,6 @@
 <template>
 	<PageLayout>
 		<view class="chat-container">
-			<!-- Chat Header -->
 			<view class="chat-header glass-panel">
 				<view class="header-action" @click="toggleHistory">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon">
@@ -9,7 +8,7 @@
 						<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
 					</svg>
 				</view>
-				
+
 				<view class="header-center">
 					<picker :range="modelNames" @change="handleModelChange">
 						<view class="model-selector">
@@ -29,76 +28,84 @@
 				</view>
 			</view>
 
-			<scroll-view class="message-list" scroll-y :scroll-top="scrollTop" :scroll-with-animation="true">
-			<view class="message-wrapper" v-for="(msg, index) in messages" :key="index" :class="msg.role">
-				<view class="avatar">
-					<view v-if="msg.role === 'user'" class="icon-inner">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--brand-500);">
-							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-							<circle cx="12" cy="7" r="4"></circle>
-						</svg>
-					</view>
-					<view v-else class="icon-inner">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--warning-500);">
-							<rect x="3" y="11" width="18" height="10" rx="2"></rect>
-							<circle cx="12" cy="5" r="2"></circle>
-							<path d="M12 7v4"></path>
-							<line x1="8" y1="16" x2="8" y2="16"></line>
-							<line x1="16" y1="16" x2="16" y2="16"></line>
-						</svg>
-					</view>
-				</view>
-				<view class="content-box"><text class="content">{{ msg.content }}</text></view>
+			<view class="action-strip">
+				<button class="strip-btn" :disabled="reportLoading" @click="handleGenerateWeeklyReport">
+					{{ reportLoading ? '生成中...' : '智能周报' }}
+				</button>
+				<button class="strip-btn" :disabled="exporting || !currentSessionId" @click="handleExportSession">
+					{{ exporting ? '导出中...' : '导出MD' }}
+				</button>
 			</view>
-			<view class="padding-bottom"></view>
-		</scroll-view>
 
-		<view class="input-area">
-			<textarea class="message-input" v-model="inputText" auto-height placeholder="向 AI 助手提问训练问题..." />
-			<button class="send-btn" :disabled="!inputText.trim() || sending" @click="handleSend">
-				<text v-if="!sending">发送</text>
-				<text v-else>...</text>
-			</button>
-		</view>
-
-		<!-- History Drawer -->
-		<view class="history-drawer" :class="{ active: showHistory }" @click="showHistory = false">
-			<view class="drawer-content glass-panel" @click.stop>
-				<view class="drawer-header">
-					<text class="drawer-title">历史对话</text>
-					<text class="close-btn" @click="showHistory = false">×</text>
-				</view>
-				<scroll-view scroll-y class="session-list">
-					<view 
-						v-for="session in sessions" 
-						:key="session.session_id" 
-						class="session-item"
-						:class="{ active: currentSessionId === session.session_id }"
-						@click="switchSession(session)"
-					>
-						<view class="session-icon">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-								<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+			<scroll-view class="message-list" scroll-y :scroll-top="scrollTop" :scroll-with-animation="true">
+				<view class="message-wrapper" v-for="(msg, index) in messages" :key="index" :class="msg.role">
+					<view class="avatar">
+						<view v-if="msg.role === 'user'" class="icon-inner">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--brand-500);">
+								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+								<circle cx="12" cy="7" r="4"></circle>
 							</svg>
 						</view>
-						<view class="session-info">
-							<text class="session-name">{{ session.title || '新对话' }}</text>
-							<text class="session-date">{{ formatDate(session.updated_at) }}</text>
+						<view v-else class="icon-inner">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--warning-500);">
+								<rect x="3" y="11" width="18" height="10" rx="2"></rect>
+								<circle cx="12" cy="5" r="2"></circle>
+								<path d="M12 7v4"></path>
+								<line x1="8" y1="16" x2="8" y2="16"></line>
+								<line x1="16" y1="16" x2="16" y2="16"></line>
+							</svg>
 						</view>
 					</view>
-					<view v-if="sessions.length === 0" class="empty-sessions">
-						<text>暂无历史记录</text>
-					</view>
-				</scroll-view>
+					<view class="content-box"><text class="content">{{ msg.content }}</text></view>
+				</view>
+				<view class="padding-bottom"></view>
+			</scroll-view>
+
+			<view class="input-area">
+				<textarea class="message-input" v-model="inputText" auto-height placeholder="向 AI 助手提问训练问题..." />
+				<button class="send-btn" :disabled="!inputText.trim() || sending" @click="handleSend">
+					<text v-if="!sending">发送</text>
+					<text v-else>...</text>
+				</button>
 			</view>
-		</view>
+
+			<view class="history-drawer" :class="{ active: showHistory }" @click="showHistory = false">
+				<view class="drawer-content glass-panel" @click.stop>
+					<view class="drawer-header">
+						<text class="drawer-title">历史对话</text>
+						<text class="close-btn" @click="showHistory = false">×</text>
+					</view>
+					<scroll-view scroll-y class="session-list">
+						<view
+							v-for="session in sessions"
+							:key="session.session_id"
+							class="session-item"
+							:class="{ active: currentSessionId === session.session_id }"
+							@click="switchSession(session)"
+						>
+							<view class="session-icon">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
+									<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+								</svg>
+							</view>
+							<view class="session-info">
+								<text class="session-name">{{ session.title || '新对话' }}</text>
+								<text class="session-date">{{ formatDate(session.updated_at) }}</text>
+							</view>
+						</view>
+						<view v-if="sessions.length === 0" class="empty-sessions">
+							<text>暂无历史记录</text>
+						</view>
+					</scroll-view>
+				</view>
+			</view>
 		</view>
 	</PageLayout>
 </template>
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue';
-import { sendMessage, createSession, getLatestSession } from '@/services/aiChat';
+import { sendMessage, createSession, getLatestSession, getModels, getSessions, getSession, exportSession, generateReport } from '@/services/aiChat';
 import PageLayout from '@/components/PageLayout.vue';
 
 const messages = ref([
@@ -109,6 +116,8 @@ const messages = ref([
 ]);
 const inputText = ref('');
 const sending = ref(false);
+const reportLoading = ref(false);
+const exporting = ref(false);
 const scrollTop = ref(0);
 const currentSessionId = ref(null);
 const showHistory = ref(false);
@@ -116,21 +125,70 @@ const sessions = ref([]);
 const modelNames = ref(['Qwen']);
 const selectedModel = ref('Qwen');
 
+const formatDateKey = (date) => {
+	const y = date.getFullYear();
+	const m = String(date.getMonth() + 1).padStart(2, '0');
+	const d = String(date.getDate()).padStart(2, '0');
+	return `${y}-${m}-${d}`;
+};
+
+const buildLocalSessionMarkdown = () => {
+	return messages.value
+		.map((msg) => {
+			const role = msg.role === 'user' ? '用户' : '助手';
+			return `## ${role}\n\n${msg.content}\n`;
+		})
+		.join('\n---\n\n');
+};
+
+const downloadMarkdown = (content, fileName) => {
+	// #ifdef H5
+	const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = fileName;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(url);
+	// #endif
+
+	// #ifndef H5
+	uni.setClipboardData({
+		data: content,
+		success: () => uni.showToast({ title: '已复制Markdown内容', icon: 'none' })
+	});
+	// #endif
+};
+
 const loadModels = async () => {
-	const res = await getModels();
-	if (res.success && res.data) {
-		modelNames.value = res.data.map(m => m.name || m.id || m);
+	try {
+		const res = await getModels();
+		if (res.success && Array.isArray(res.data)) {
+			const names = res.data.map((m) => m?.name || m?.id || m).filter(Boolean);
+			if (names.length > 0) {
+				modelNames.value = names;
+				if (!names.includes(selectedModel.value)) {
+					selectedModel.value = names[0];
+				}
+			}
+		}
+	} catch (err) {
+		console.error('load models error', err);
 	}
 };
 
 const fetchSessions = async () => {
 	const user = uni.getStorageSync('user');
 	if (!user?.id) return;
-	const res = await getLatestSession(user.id); // This actually gets all sessions in the current API implementation it seems? 
-	// Wait, let's use getSessions
-	const resList = await getSessions(user.id);
-	if (resList.success) {
-		sessions.value = resList.data;
+	try {
+		const resList = await getSessions(user.id);
+		if (resList.success && Array.isArray(resList.data)) {
+			sessions.value = resList.data;
+		}
+	} catch (err) {
+		console.error('fetch sessions error', err);
 	}
 };
 
@@ -146,9 +204,9 @@ const handleModelChange = (e) => {
 const startNewChat = async () => {
 	const user = uni.getStorageSync('user');
 	if (!user?.id) return;
-	
+
 	const res = await createSession(user.id, selectedModel.value);
-	if (res.success) {
+	if (res.success && res.data?.session_id) {
 		currentSessionId.value = res.data.session_id;
 		messages.value = [
 			{
@@ -157,15 +215,16 @@ const startNewChat = async () => {
 			}
 		];
 		showHistory.value = false;
+		fetchSessions();
 	}
 };
 
 const switchSession = async (session) => {
 	currentSessionId.value = session.session_id;
-	selectedModel.value = session.model || 'Qwen';
+	selectedModel.value = session.model || selectedModel.value;
 	const res = await getSession(session.session_id);
-	if (res.success && res.data.messages) {
-		messages.value = res.data.messages.filter(m => m.role !== 'system');
+	if (res.success && res.data?.messages) {
+		messages.value = res.data.messages.filter((m) => m.role !== 'system');
 		if (messages.value.length === 0) {
 			messages.value = [{ role: 'assistant', content: '会话加载成功，请继续提问。' }];
 		}
@@ -185,14 +244,88 @@ const initSession = async () => {
 	if (!user?.id) return;
 
 	const res = await getLatestSession(user.id);
-	if (res.success && res.data) {
+	if (res.success && res.data?.session_id) {
 		currentSessionId.value = res.data.session_id;
-		selectedModel.value = res.data.model || 'Qwen';
+		selectedModel.value = res.data.model || selectedModel.value;
 		if (res.data.messages && res.data.messages.length > 0) {
-			messages.value = res.data.messages.filter(m => m.role !== 'system');
+			messages.value = res.data.messages.filter((m) => m.role !== 'system');
 		}
 	} else {
 		await startNewChat();
+	}
+	fetchSessions();
+};
+
+const handleExportSession = async () => {
+	if (!currentSessionId.value || exporting.value) {
+		uni.showToast({ title: '请先创建会话', icon: 'none' });
+		return;
+	}
+
+	exporting.value = true;
+	const fileName = `会话_${currentSessionId.value}_${formatDateKey(new Date())}.md`;
+	try {
+		const result = await exportSession(currentSessionId.value);
+		if (result.success && result.tempFilePath) {
+			// #ifdef H5
+			const link = document.createElement('a');
+			link.href = result.tempFilePath;
+			link.download = fileName;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			uni.showToast({ title: '会话已导出', icon: 'success' });
+			// #endif
+
+			// #ifndef H5
+			uni.saveFile({
+				tempFilePath: result.tempFilePath,
+				success: () => uni.showToast({ title: '会话已保存', icon: 'success' }),
+				fail: () => downloadMarkdown(buildLocalSessionMarkdown(), fileName)
+			});
+			// #endif
+			return;
+		}
+
+		downloadMarkdown(buildLocalSessionMarkdown(), fileName);
+		uni.showToast({ title: result.message || '已导出本地记录', icon: 'none' });
+	} catch (err) {
+		console.error('export session error', err);
+		downloadMarkdown(buildLocalSessionMarkdown(), fileName);
+		uni.showToast({ title: '导出失败，已提供本地记录', icon: 'none' });
+	} finally {
+		exporting.value = false;
+	}
+};
+
+const handleGenerateWeeklyReport = async () => {
+	if (reportLoading.value) return;
+	const user = uni.getStorageSync('user') || {};
+	if (!user?.id) {
+		uni.showToast({ title: '请先登录', icon: 'none' });
+		return;
+	}
+
+	reportLoading.value = true;
+	try {
+		const result = await generateReport(user.id);
+		if (result.success && result.data?.report) {
+			const reportText = result.data.report;
+			messages.value.push({
+				role: 'assistant',
+				content: `以下是你的智能周报：\n\n${reportText}`
+			});
+			scrollToBottom();
+			downloadMarkdown(reportText, `智能运动周报_${formatDateKey(new Date())}.md`);
+			uni.showToast({ title: '周报已生成', icon: 'success' });
+			return;
+		}
+		uni.showToast({ title: result.message || '生成失败', icon: 'none' });
+	} catch (err) {
+		console.error('generate weekly report error', err);
+		uni.showToast({ title: '生成失败，请稍后重试', icon: 'none' });
+	} finally {
+		reportLoading.value = false;
 	}
 };
 
@@ -212,9 +345,15 @@ const handleSend = async () => {
 		const res = await sendMessage(currentSessionId.value, userMsg, selectedModel.value);
 		if (res.success && res.data?.response) {
 			messages.value.push({ role: 'assistant', content: res.data.response });
+		} else if (res.success && res.data?.session?.messages) {
+			const serverMsgs = res.data.session.messages.filter((m) => m.role !== 'system');
+			if (serverMsgs.length > 0) {
+				messages.value = serverMsgs;
+			}
 		} else {
 			messages.value.push({ role: 'assistant', content: '收到你的问题了，我正在整理更准确的回复。' });
 		}
+		fetchSessions();
 	} catch (err) {
 		console.error('send message error', err);
 		messages.value.push({ role: 'assistant', content: '网络似乎不稳定，请稍后再试。' });
@@ -297,6 +436,27 @@ onMounted(() => {
 	width: 24rpx;
 	height: 24rpx;
 	color: var(--brand-500);
+}
+
+.action-strip {
+	display: flex;
+	gap: 14rpx;
+	padding: 0 24rpx 10rpx;
+}
+
+.strip-btn {
+	flex: 1;
+	height: 62rpx;
+	line-height: 62rpx;
+	border-radius: 999rpx;
+	font-size: 24rpx;
+	font-weight: 600;
+	background: #eef3ff;
+	color: #3054aa;
+}
+
+.strip-btn[disabled] {
+	opacity: 0.55;
 }
 
 .message-list {
@@ -404,7 +564,6 @@ onMounted(() => {
 	opacity: 0.55;
 }
 
-/* History Drawer */
 .history-drawer {
 	position: absolute;
 	inset: 0;
