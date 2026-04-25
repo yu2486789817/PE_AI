@@ -1,39 +1,497 @@
-# AI Gym 后端 API 文档
+# Yolo_backend - AI 健身动作识别服务
 
-## 概述
+## 模块概述
 
-AI Gym 是一个基于计算机视觉的姿态识别系统，能够识别和计数多种健身动作。本系统采用 FastAPI 构建 RESTful API 接口，使用 YOLOv8-pose 模型进行人体姿态估计，可以准确识别用户执行的各种健身动作并实时计数。
+Yolo_backend 是一个基于计算机视觉的健身动作识别服务，使用 YOLOv8-pose 模型进行人体姿态估计，能够实时识别和计数多种健身动作，并提供动作质量评估和错误检测。
 
-## 技术栈
+## 系统架构
 
-- Python 3.x
-- FastAPI - Web 框架
-- YOLOv8-pose - 人体姿态估计模型
-- OpenCV - 视频处理
-- Utralytics - YOLO 模型库
-
-## 启动服务
-
-```bash
-python main.py
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Yolo_backend 架构                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐ │
+│  │   FastAPI   │───▶│   AIGym     │───▶│   YOLOv8-pose      │ │
+│  │   API 层    │    │   核心类    │    │   模型推理         │ │
+│  └─────────────┘    └─────────────┘    └─────────────────────┘ │
+│         │                  │                                    │
+│         │                  ▼                                    │
+│         │          ┌─────────────────────────────────────┐     │
+│         │          │         运动跟踪器                   │     │
+│         │          │  ┌───────────┬───────────┬────────┐ │     │
+│         │          │  │ Pushup    │ Squat     │Deadlift│ │     │
+│         │          │  │ Tracker   │ Tracker   │Tracker │ │     │
+│         │          │  └───────────┴───────────┴────────┘ │     │
+│         │          └─────────────────────────────────────┘     │
+│         │                                                     │
+│         ▼                                                     │
+│  ┌─────────────┐    ┌─────────────┐                          │
+│  │   SQLite    │    │   文件存储   │                          │
+│  │   数据库    │    │   (视频)     │                          │
+│  └─────────────┘    └─────────────┘                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-服务默认运行在 `http://localhost:8000`
+## 核心组件说明
 
-## API 接口说明
+### 1. AIGym 核心类 (`ai_gym.py`)
+
+AIGym 是整个识别系统的核心类，继承自 Ultralytics 的 BaseSolution。
+
+**主要职责：**
+- 加载和管理 YOLOv8-pose 模型
+- 协调运动跟踪器进行动作识别
+- 管理视频帧处理流程
+- 收集和返回处理结果
+
+**关键属性：**
+```python
+class AIGym(BaseSolution):
+    def __init__(self, kpts_to_check, line_thickness=2, pose_type="pushup", **kwargs):
+        self.pose_type = pose_type           # 运动类型
+        self.kpts = kpts_to_check            # 关键点索引
+        self.poseup_angle = ...              # 上升角度阈值
+        self.posedown_angle = ...            # 下降角度阈值
+        self.tracker = ...                   # 运动跟踪器实例
+        self.result_data = {}                # 结果数据
+```
+
+**处理流程：**
+1. 接收视频帧
+2. 调用 YOLO 模型进行姿态估计
+3. 提取人体关键点
+4. 计算关节角度
+5. 调用对应跟踪器进行状态判断
+6. 返回处理后的帧和计数结果
+
+### 2. 运动跟踪器架构
+
+每种运动类型都有独立的 Tracker 类，遵循统一的设计模式：
+
+```
+BaseTracker (隐式接口)
+├── PushupTracker   (俯卧撑)
+├── SquatTracker    (深蹲)
+└── DeadliftTracker (硬拉)
+```
+
+**Tracker 类通用结构：**
+```python
+class XxxTracker:
+    def __init__(self):
+        self.state_tracker = {...}      # 状态跟踪字典
+        self.thresholds = {...}         # 阈值配置
+        self.FEEDBACK_ID_MAP = {...}    # 错误反馈映射
+        self.events = []                # 事件记录
+
+    def track(self, k, im0, ind, count, fps=30):
+        """主处理逻辑"""
+        pass
+
+    def _get_state(self, angle):
+        """根据角度判断状态"""
+        pass
+
+    def _update_state_sequence(self, state):
+        """更新状态序列"""
+        pass
+
+    def _record_events(self, frame_index, fps):
+        """记录事件"""
+        pass
+```
+
+### 3. 关键点检测算法原理
+
+**YOLOv8-pose 关键点索引：**
+```
+0: 鼻子    1: 左眼    2: 右眼    3: 左耳    4: 右耳
+5: 左肩    6: 右肩    7: 左肘    8: 右肘    9: 左腕
+10: 右腕   11: 左髋   12: 右髋   13: 左膝   14: 右膝
+15: 左踝   16: 右踝
+```
+
+**各运动使用的关键点：**
+| 运动类型 | 关键点组合 | 用途 |
+|---------|-----------|------|
+| Pushup  | 6, 8, 10  | 右肩-右肘-右腕 |
+| Squat   | 12, 14, 16| 右髋-右膝-右踝 |
+| Deadlift| 6, 12, 14 | 右肩-右髋-右膝 |
+
+### 4. 角度计算与状态判断逻辑
+
+**角度计算函数 (`function.py`)：**
+```python
+def calculate_angle(point1, point2, point3=None, reference_direction='horizontal'):
+    """
+    计算角度：
+    - 三点夹角：point1-point2-point3
+    - 两点与参考方向夹角：point1-point2 与 horizontal/vertical
+    """
+```
+
+**状态判断逻辑（以俯卧撑为例）：**
+```
+状态序列：s1 → s2 → s3 → s1 (完成一次)
+
+s1 (NORMAL): 肘部角度 155°-180° (上升完成)
+s2 (TRANS):  肘部角度 110°-150° (下降中)
+s3 (PASS):   肘部角度 55°-100°  (下放到底)
+
+完整动作：s1 → s2 → s3 → s1
+```
+
+### 5. 错误检测机制
+
+**俯卧撑错误类型：**
+| 错误代码 | 描述 | 检测条件 |
+|---------|------|---------|
+| BACK ARCHED | 背部拱起 | 背部角度 > 90° |
+| INSUFFICIENT RANGE | 动作幅度不够 | 未达到 s3 状态 |
+| BODY SINKING | 身体下沉 | 髋肩距离比 < 0.85 |
+
+**深蹲错误类型：**
+| 错误代码 | 描述 | 检测条件 |
+|---------|------|---------|
+| LEAN BACKWARDS | 后倾过多 | 髋角度 > 50° |
+| LEAN FORWARD | 前倾过多 | 髋角度 < 10° |
+| KNEE OVER TOE | 膝盖超脚尖 | 踝角度 > 45° |
+| SQUAT TOO DEEP | 下蹲过深 | 膝角度 > 95° |
+
+**硬拉错误类型：**
+| 错误代码 | 描述 | 检测条件 |
+|---------|------|---------|
+| BACK TOO ARCHED | 背部过度弯曲 | 肩髋角度 > 50° |
+| KNEE TOO LOW | 膝盖过低 | 膝踝角度 > 45° |
+| ARM BENDING | 手臂弯曲 | 手臂角度 < 150° |
+
+## 识别算法优化建议
+
+### 当前算法分析
+
+**优点：**
+1. 基于状态机的动作判断逻辑清晰
+2. 支持多种运动类型
+3. 实时反馈机制完善
+
+**可改进点：**
+1. 阈值固定，无法适应不同体型
+2. 单帧判断，缺乏时序平滑
+3. 仅使用单侧关键点
+4. 对遮挡和光照敏感
+
+### 改进方向
+
+#### 1. 多关键点融合
+```python
+# 当前：仅使用右侧关键点
+right_shoulder = k[6]
+right_elbow = k[8]
+
+# 改进：融合左右两侧，取置信度高的
+def get_reliable_keypoint(k, left_idx, right_idx, confidence_threshold=0.5):
+    left_conf = k[left_idx][2] if len(k[left_idx]) > 2 else 1.0
+    right_conf = k[right_idx][2] if len(k[right_idx]) > 2 else 1.0
+
+    if left_conf > confidence_threshold and right_conf > confidence_threshold:
+        return (k[left_idx] + k[right_idx]) / 2  # 平均
+    elif left_conf > right_conf:
+        return k[left_idx]
+    else:
+        return k[right_idx]
+```
+
+#### 2. 时序平滑
+```python
+from collections import deque
+
+class SmoothedTracker:
+    def __init__(self, window_size=5):
+        self.angle_history = deque(maxlen=window_size)
+
+    def get_smoothed_angle(self, current_angle):
+        self.angle_history.append(current_angle)
+        # 加权移动平均
+        weights = [0.1, 0.15, 0.2, 0.25, 0.3][-len(self.angle_history):]
+        return sum(a * w for a, w in zip(self.angle_history, weights)) / sum(weights)
+```
+
+#### 3. 自适应阈值
+```python
+class AdaptiveThreshold:
+    def __init__(self):
+        self.baseline_angles = []
+
+    def calibrate(self, calibration_frames):
+        """校准阶段：收集用户的基础姿态"""
+        self.baseline_angles = calibration_frames
+        self.user_specific_threshold = self._calculate_personal_threshold()
+
+    def _calculate_personal_threshold(self):
+        """根据用户体型计算个性化阈值"""
+        # 基于用户肢体长度比例调整阈值
+        pass
+```
+
+#### 4. 置信度过滤
+```python
+def filter_low_confidence_keypoints(keypoints, threshold=0.5):
+    """过滤低置信度的关键点"""
+    filtered = keypoints.copy()
+    for i, kp in enumerate(keypoints):
+        if len(kp) > 2 and kp[2] < threshold:
+            # 使用上一帧或插值
+            filtered[i] = interpolate_keypoint(keypoints, i)
+    return filtered
+```
+
+## 数据库设计
+
+### exercise_feedback 表
+
+| 字段名 | 类型 | 说明 |
+|-------|------|------|
+| id | INTEGER | 主键，自增 |
+| homework_id | VARCHAR(50) | 作业ID |
+| student_id | VARCHAR(50) | 学生ID |
+| pose_type | VARCHAR(20) | 动作类型 |
+| uploaded_at | TIMESTAMP | 上传时间 |
+| original_video_path | VARCHAR(255) | 原始视频路径 |
+| processed_video_path | VARCHAR(255) | 处理后视频路径 |
+| total_count | INTEGER | 总动作次数 |
+| correct_count | INTEGER | 正确次数 |
+| incorrect_count | INTEGER | 错误次数 |
+| feedback_json | TEXT | AI反馈数据(JSON) |
+| video_duration | FLOAT | 视频时长(秒) |
+
+### feedback_json 结构
+
+```json
+{
+  "events": [
+    {
+      "event_id": "pushup_1",
+      "type": "PUSHUP_COMPLETE_CORRECT",
+      "frame": 120,
+      "timestamp": 4.0,
+      "correct_count": 1,
+      "incorrect_count": 0
+    }
+  ],
+  "performance": {
+    "total_count": 12,
+    "correct_count": 10,
+    "incorrect_count": 2,
+    "accuracy_rate": 83.33
+  },
+  "video_info": {
+    "total_frames": 360,
+    "processed_frames": 180,
+    "fps": 30,
+    "duration": 12.0
+  }
+}
+```
+
+## API 接口文档
+
+详见现有 README.md 中的 API 文档部分，此处列出核心接口：
+
+| 接口 | 方法 | 说明 |
+|-----|------|------|
+| `/health` | GET | 健康检查 |
+| `/supported_poses` | GET | 获取支持的动作类型 |
+| `/stream_process_video` | POST | 流式视频处理 |
+| `/process_and_save_video` | POST | 处理并保存视频 |
+| `/get_processed_video` | GET | 获取处理后的视频 |
+| `/query_records` | GET | 查询记录 |
+| `/api/student/all-records/{student_id}` | GET | 获取学生所有记录 |
+
+## 扩展指南：添加新运动类型
+
+### 步骤 1：创建 Tracker 类
+
+在 `Code/Yolo_backend/` 目录下创建新文件，如 `pullup.py`：
+
+```python
+import cv2
+import numpy as np
+from function import draw_text, calculate_angle, _show_feedback
+import time
+
+class PullupTracker:
+    def __init__(self):
+        self.state_tracker = {
+            'state_seq': [],
+            'DISPLAY_TEXT': np.full((3,), False),
+            'COUNT_FRAMES': np.zeros((3,), dtype=np.int64),
+            'INCORRECT_POSTURE': False,
+            'curr_state': None,
+            'PULLUP_COUNT': 0,
+            'IMPROPER_PULLUP': 0
+        }
+
+        self.FEEDBACK_ID_MAP = {
+            0: ('INCOMPLETE RANGE', 215, (255, 80, 80)),
+            1: ('SWINGING', 170, (255, 80, 80)),
+            2: ('KNEE BENDING', 125, (255, 80, 80))
+        }
+
+        self.thresholds = self.get_thresholds_beginner()
+
+    def get_thresholds_beginner(self):
+        return {
+            'SHOULDER_ELBOW_ANGLE': {
+                'NORMAL': (160, 180),  # 上升完成
+                'TRANS': (100, 140),   # 过渡
+                'PASS': (30, 80)       # 下放
+            },
+            # ... 其他阈值
+        }
+
+    def track(self, k, im0, ind, count, fps=30):
+        # 实现识别逻辑
+        pass
+```
+
+### 步骤 2：在 ai_gym.py 中注册
+
+```python
+# 在 ai_gym.py 顶部添加导入
+from pullup import PullupTracker
+
+# 在 AIGym.__init__ 中添加条件分支
+if pose_type == "pullup":
+    self.tracker = PullupTracker()
+```
+
+### 步骤 3：在 main.py 中添加支持
+
+```python
+@app.get("/supported_poses")
+async def get_supported_poses():
+    return {
+        "supported_poses": [
+            "pushup", "squat", "deadlift", "pullup"  # 添加新类型
+        ]
+    }
+```
+
+### 步骤 4：更新关键点配置
+
+在 `main.py` 的 `create_gym_object` 方法中添加：
+
+```python
+elif pose_type in ["pullup"]:
+    kpts_to_check = [6, 8, 10]  # 或其他合适的关键点
+```
+
+## 部署说明
+
+### 环境要求
+
+- Python 3.9+
+- CUDA 11.0+ (GPU 加速)
+- 内存：至少 8GB
+- GPU 显存：至少 4GB
+
+### 安装依赖
+
+```bash
+cd Code/Yolo_backend
+pip install ultralytics fastapi uvicorn opencv-python numpy
+```
+
+### 启动服务
+
+```bash
+# 开发模式
+python main.py
+
+# 生产模式
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Docker 部署
+
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+COPY . .
+
+RUN pip install --no-cache-dir ultralytics fastapi uvicorn opencv-python-headless numpy
+
+# 下载模型
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n-pose.pt')"
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## 性能优化建议
+
+1. **模型量化**：使用 INT8 量化减少显存占用
+2. **批处理**：对多帧进行批量推理
+3. **跳帧处理**：当前已实现 SKIP_FACTOR=2
+4. **异步处理**：使用 asyncio 并行处理多个请求
+5. **缓存机制**：对相同视频的重复请求进行缓存
+
+## 常见问题
+
+### Q: 识别准确率不高怎么办？
+A: 确保视频光线充足，人物在画面中清晰可见，背景不要太复杂。
+
+### Q: 如何调整阈值？
+A: 修改各 Tracker 类中的 `get_thresholds_beginner()` 方法中的阈值配置。
+
+### Q: 支持多人识别吗？
+A: 当前版本仅支持单人识别，多人场景需要修改 `ai_gym.py` 中的处理逻辑。
+
+---
+
+## 上游服务接口文档
+
+本章节面向上游服务（PE-AI-Backend、前端）开发者，说明如何调用 Yolo_backend 提供的接口。
+
+### 服务信息
+
+| 配置项 | 值 |
+|-------|-----|
+| 服务名称 | Yolo_backend |
+| 默认端口 | 8000 |
+| 基础 URL | `http://localhost:8000` |
+| 协议 | HTTP + SSE |
+
+### 接口概览
+
+| 接口 | 方法 | 调用方 | 业务场景 |
+|-----|------|-------|---------|
+| `/health` | GET | PE-AI-Backend | 健康检查 |
+| `/supported_poses` | GET | 前端 | 获取支持的动作类型 |
+| `/process_and_save_video` | POST | 前端 | 学生提交作业视频 |
+| `/get_processed_video` | GET | 前端 | 获取处理后的视频 |
+| `/query_records` | GET | 前端/PE-AI-Backend | 查询 AI 评价结果 |
+| `/api/student/all-records/{student_id}` | GET | AIChat | 获取学生历史数据 |
+
+---
 
 ### 1. 健康检查
 
-**接口地址**: `GET /health`
+**接口：** `GET /health`
 
-**功能描述**: 检查后端服务是否正常运行
+**调用方：** PE-AI-Backend（服务启动检查、负载均衡健康探测）
 
-**请求示例**:
+**业务场景：** 确认 Yolo_backend 服务正常运行
+
+**请求示例：**
 ```bash
-curl -X GET http://localhost:8000/health
+curl http://localhost:8000/health
 ```
 
-**响应示例**:
+**响应格式：**
 ```json
 {
   "status": "healthy",
@@ -42,705 +500,403 @@ curl -X GET http://localhost:8000/health
 }
 ```
 
-**响应字段说明**:
-- `status`: 服务状态，"healthy"表示正常
-- `model_loaded`: 模型是否加载成功
-- `active_sessions`: 当前活跃会话数量
+**响应字段说明：**
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| status | string | 服务状态，"healthy" 表示正常 |
+| model_loaded | boolean | YOLO 模型是否加载成功 |
+| active_sessions | integer | 当前正在处理的视频会话数 |
+
+---
 
 ### 2. 获取支持的动作类型
 
-**接口地址**: `GET /supported_poses`
+**接口：** `GET /supported_poses`
 
-**功能描述**: 获取后端支持的所有健身动作类型
+**调用方：** 前端（作业提交页面初始化时）
 
-**请求示例**:
+**业务场景：** 前端需要展示可选的动作类型列表
+
+**请求示例：**
 ```bash
-curl -X GET http://localhost:8000/supported_poses
+curl http://localhost:8000/supported_poses
 ```
 
-**响应示例**:
+**响应格式：**
 ```json
 {
-  "supported_poses": [
-    "pushup",
-    "abworkout", 
-    "squat",
-    "deadlift",
-    "benchpress"
-  ]
+  "supported_poses": ["pushup", "squat", "deadlift"]
 }
 ```
 
-### 3. 流式视频处理接口
+---
 
-**接口地址**: `POST /stream_process_video`
+### 3. 处理并保存视频（核心接口）
 
-**功能描述**: 上传视频文件进行健身动作识别和计数，通过 Server-Sent Events (SSE) 流式返回处理过程和结果
+**接口：** `POST /process_and_save_video`
 
-**请求参数**:
-- `file`: 视频文件（必填），支持格式：mp4, avi, mov
-- `pose_type`: 动作类型（选填，默认为 "pushup"），可选值参考 [/supported_poses](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L297-L303) 接口
+**调用方：** 前端（学生提交作业）
 
-**请求示例**:
+**业务场景：** 学生上传作业视频，AI 进行动作识别和计数
+
+**请求参数：**
+
+| 参数名 | 位置 | 类型 | 必填 | 说明 |
+|-------|------|------|------|------|
+| homework_id | Query | string | 是 | 作业ID，用于关联作业和存储路径 |
+| student_id | Query | string | 是 | 学生ID，用于关联学生和存储路径 |
+| pose_type | Query | string | 否 | 动作类型，默认 "pushup"，可选: pushup/squat/deadlift |
+| file | Body | binary | 是 | 视频文件 (multipart/form-data) |
+
+**请求示例：**
 ```bash
 curl -X POST \
-  -F "file=@test_video.mp4" \
-  -F "pose_type=pushup" \
-  http://localhost:8000/stream_process_video
+  -F "file=@student_video.mp4" \
+  "http://localhost:8000/process_and_save_video?homework_id=hw001&student_id=stu001&pose_type=pushup"
 ```
 
-**响应说明**:
-- 成功：返回 SSE 流，包含处理过程中的各个阶段信息
-- 失败：返回JSON格式的错误信息
+**响应格式：** SSE 流式响应
 
-**SSE 事件类型**:
-1. `init`: 初始化信息，包含视频基本信息
-2. `frame`: 每帧处理结果，包含当前计数等信息
-3. `final_stats`: 最终统计信息，包含最终计数和处理结果
-4. `error`: 错误信息
+**SSE 事件类型：**
 
-**响应示例**（成功）:
-```
-data: {"event": "init", "data": {"message": "开始处理视频"}}
-
-data: {"event": "init", "data": {"message": "视频上传完成", "path": "/tmp/tmpxxxxxx/input_video.mp4"}}
-
-data: {"event": "init", "data": {"message": "视频信息获取完成", "fps": 30, "width": 1920, "height": 1080, "frame_count": 360}}
-
-...
-
-data: {"event": "frame", "data": {"frame_index": 10, "processed_frame_count": 5, "count": 2, "max_count": 2, "image": "base64_encoded_image"}}
-
-...
-
-data: {"event": "final_stats", "data": {"message": "视频处理完成", "max_count": 12, "processed_frame_count": 180, "total_time": 12.0, "output_path": "/tmp/tmpxxxxxx/output_video.mp4", "video_size": 1234567}}
-
-data: {"event": "final_stats", "data": {"message": "视频可供下载", "download_url": "/download_processed_video?temp_id=xxxxx"}}
-```
-
-### 4. 视频处理接口
-
-**接口地址**: `POST /process_video`
-
-**功能描述**: 上传视频文件进行健身动作识别和计数，通过 Server-Sent Events (SSE) 流式返回处理过程和结果（与 [/stream_process_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L246-L251) 功能相同）
-
-**请求参数**:
-- `file`: 视频文件（必填），支持格式：mp4, avi, mov
-- `pose_type`: 动作类型（选填，默认为 "pushup"），可选值参考 [/supported_poses](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L297-L303) 接口
-
-**请求示例**:
-```bash
-curl -X POST \
-  -F "file=@test_video.mp4" \
-  -F "pose_type=pushup" \
-  http://localhost:8000/process_video
-```
-
-### 5. 处理并保存视频接口
-
-**接口地址**: `POST /process_and_save_video`
-
-**功能描述**: 上传视频文件进行健身动作识别和计数，并将处理后的视频保存到 homework/homework_id/student_id 目录下
-
-**请求参数**:
-- `homework_id`: 作业ID（必填，查询参数）
-- `student_id`: 学生ID（必填，查询参数）
-- `pose_type`: 动作类型（选填，默认为 "pushup"）
-- `file`: 视频文件（必填），支持格式：mp4, avi, mov
-
-**请求示例**:
-```bash
-curl -X POST \
-  -F "file=@test_video.mp4" \
-  -F "pose_type=pushup" \
-  "http://localhost:8000/process_and_save_video?homework_id=hw001&student_id=stu001"
-```
-
-**响应示例**（成功）:
-```
-data: {"event": "init", "data": {"message": "开始处理视频"}}
-
-...
-
-data: {"event": "final_stats", "data": {"message": "视频处理完成", "max_count": 12, "processed_frame_count": 180, "total_time": 12.0, "output_path": "/tmp/tmpxxxxxx/output_video.mp4", "saved_path": "homework/hw001/stu001/processed_video.mp4", "video_url": "/get_processed_video?homework_id=hw001&student_id=stu001"}}
-
-data: {"event": "final_stats", "data": {"message": "视频可供下载", "download_url": "/download_processed_video?temp_id=xxxxx"}}
-```
-
-### 6. 获取已处理视频接口
-
-**接口地址**: `GET /get_processed_video`
-
-**功能描述**: 根据作业ID和学生ID获取已处理的视频文件
-
-**请求参数**:
-- `homework_id`: 作业ID（必填，查询参数）
-- `student_id`: 学生ID（必填，查询参数）
-
-**请求示例**:
-```bash
-curl -X GET "http://localhost:8000/get_processed_video?homework_id=hw001&student_id=stu001" \
-  --output processed_video.mp4
-```
-
-**响应说明**:
-- 成功：返回处理后的视频文件（MP4格式）
-- 失败：返回404错误（文件不存在）
-
-### 7. 下载处理后视频接口
-
-**接口地址**: `GET /download_processed_video`
-
-**功能描述**: 下载处理后的视频文件
-
-**请求参数**:
-- `temp_id`: 临时ID（必填，查询参数），由 [/stream_process_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L246-L251) 或 [/process_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L280-L286) 接口返回
-
-**请求示例**:
-```bash
-curl -X GET "http://localhost:8000/download_processed_video?temp_id=temp_xxxxx" \
-  --output processed_video.mp4
-```
-
-### 8. 删除作业接口
-
-**接口地址**: `DELETE /delete_homework`
-
-**功能描述**: 删除指定作业ID下的所有视频文件
-
-**请求参数**:
-- `homework_id`: 作业ID（必填，查询参数）
-
-**请求示例**:
-```bash
-curl -X DELETE "http://localhost:8000/delete_homework?homework_id=hw001"
-```
-
-**响应示例**（成功）:
-```
-{
-  "status": "success",
-  "message": "作业 hw001 的所有视频已成功删除"
+#### 3.1 初始化事件 (init)
+```javascript
+data: {
+  "event": "init",
+  "data": {
+    "message": "开始处理视频",
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "frame_count": 360
+  }
 }
 ```
 
-**响应示例**（失败）:
-```
-{
-  "detail": "作业ID hw001 不存在"
+#### 3.2 帧处理事件 (frame) - 每5帧发送一次
+```javascript
+data: {
+  "event": "frame",
+  "data": {
+    "frame_index": 10,
+    "processed_frame_count": 5,
+    "count": 2,
+    "max_count": 2,
+    "image": "base64_encoded_jpeg_image"
+  }
 }
 ```
 
-### 9. 查询记录接口
+#### 3.3 最终统计事件 (final_stats)
+```javascript
+data: {
+  "event": "final_stats",
+  "data": {
+    "message": "视频处理完成",
+    "max_count": 12,              // 总动作次数
+    "processed_frame_count": 180, // 处理的帧数
+    "total_time": 12.0,           // 视频时长（秒）
+    "saved_path": "homework/hw001/stu001/processed_video.mp4",
+    "video_url": "/get_processed_video?homework_id=hw001&student_id=stu001"
+  }
+}
+```
 
-**接口地址**: `GET /query_records`
+#### 3.4 错误事件 (error)
+```javascript
+data: {
+  "event": "error",
+  "data": {
+    "message": "错误描述信息"
+  }
+}
+```
 
-**功能描述**: 根据作业ID、学生ID和动作类型查询反馈记录
+**前端处理流程：**
+```javascript
+async function submitVideo(file, homeworkId, studentId, poseType) {
+  const formData = new FormData();
+  formData.append('file', file);
 
-**请求参数**:
-- `homework_id`: 作业ID（必填，查询参数）
-- `student_id`: 学生ID（必填，查询参数）
-- `pose_type`: 动作类型（可选，查询参数）
+  const response = await fetch(
+    `http://localhost:8000/process_and_save_video?homework_id=${homeworkId}&student_id=${studentId}&pose_type=${poseType}`,
+    { method: 'POST', body: formData }
+  );
 
-**请求示例**:
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let result = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n\n');
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const { event, data } = JSON.parse(line.slice(6));
+
+        switch (event) {
+          case 'init':
+            console.log('初始化:', data.message);
+            break;
+          case 'frame':
+            // 更新预览画面
+            updatePreview(data.image);
+            break;
+          case 'final_stats':
+            result = data;
+            // 保存 AI 评价结果到后端
+            await saveAIFeedback(homeworkId, studentId, data);
+            break;
+          case 'error':
+            throw new Error(data.message);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+```
+
+---
+
+### 4. 获取处理后的视频
+
+**接口：** `GET /get_processed_video`
+
+**调用方：** 前端（查看作业提交详情）
+
+**业务场景：** 播放或下载处理后的视频
+
+**请求参数：**
+
+| 参数名 | 位置 | 类型 | 必填 | 说明 |
+|-------|------|------|------|------|
+| homework_id | Query | string | 是 | 作业ID |
+| student_id | Query | string | 是 | 学生ID |
+| download | Query | boolean | 否 | 是否作为附件下载，默认 false |
+
+**请求示例：**
 ```bash
-curl -X GET "http://localhost:8000/query_records?homework_id=hw001&student_id=stu001&pose_type=pushup"
+# 流式预览
+curl "http://localhost:8000/get_processed_video?homework_id=hw001&student_id=stu001"
+
+# 下载文件
+curl "http://localhost:8000/get_processed_video?homework_id=hw001&student_id=stu001&download=true" -o processed.mp4
 ```
 
-**响应示例**（成功）:
+**响应格式：**
+- `download=false`：SSE 流式返回视频帧
+- `download=true`：返回 MP4 文件
+
+---
+
+### 5. 查询记录
+
+**接口：** `GET /query_records`
+
+**调用方：** 前端（查看 AI 评价详情）、PE-AI-Backend（获取 AI 反馈）
+
+**业务场景：** 查看学生作业的 AI 评价结果
+
+**请求参数：**
+
+| 参数名 | 位置 | 类型 | 必填 | 说明 |
+|-------|------|------|------|------|
+| homework_id | Query | string | 是 | 作业ID |
+| student_id | Query | string | 是 | 学生ID |
+| pose_type | Query | string | 否 | 动作类型，不传则返回所有类型 |
+
+**请求示例：**
+```bash
+curl "http://localhost:8000/query_records?homework_id=hw001&student_id=stu001&pose_type=pushup"
 ```
+
+**响应格式：**
+```json
 [
   {
     "id": 1,
     "homework_id": "hw001",
     "student_id": "stu001",
     "pose_type": "pushup",
-    "processed_video_path": "homework/hw001/stu001/processed_video.mp4",
     "total_count": 12,
     "correct_count": 10,
     "incorrect_count": 2,
-    "feedback_json": "{\"events\":[],\"performance\":{\"total_count\":12,\"correct_count\":10,\"incorrect_count\":2,\"accuracy_rate\":83.33}}",
+    "feedback_json": "{\"events\":[...],\"performance\":{...}}",
     "video_duration": 12.0,
-    "uploaded_at": "2023-01-01 12:00:00"
+    "uploaded_at": "2023-01-01 12:00:00",
+    "processed_video_path": "homework/hw001/stu001/processed_video.mp4"
   }
 ]
 ```
 
-### 10. 查询所有记录接口
+**上游服务处理：**
+```java
+// PE-AI-Backend 调用示例
+public AIFeedback getAIFeedback(String homeworkId, String studentId, String poseType) {
+    String url = String.format("%s/query_records?homework_id=%s&student_id=%s&pose_type=%s",
+        yoloBaseUrl, homeworkId, studentId, poseType);
+    
+    ResponseEntity<List> response = restTemplate.getForEntity(url, List.class);
+    List<Map<String, Object>> records = response.getBody();
+    
+    if (records != null && !records.isEmpty()) {
+        Map<String, Object> record = records.get(0);
+        return new AIFeedback(
+            (Integer) record.get("correct_count"),
+            (Integer) record.get("incorrect_count"),
+            (String) record.get("feedback_json")
+        );
+    }
+    return null;
+}
+```
 
-**接口地址**: `GET /query_all_records`
+---
 
-**功能描述**: 查询所有反馈记录
+### 6. 获取学生所有记录
 
-**请求示例**:
+**接口：** `GET /api/student/all-records/{student_id}`
+
+**调用方：** AIChat 服务（生成个性化报告时）
+
+**业务场景：** AI 需要获取学生的历史运动数据来生成个性化训练建议
+
+**请求参数：**
+
+| 参数名 | 位置 | 类型 | 必填 | 说明 |
+|-------|------|------|------|------|
+| student_id | Path | string | 是 | 学生ID |
+
+**请求示例：**
 ```bash
-curl -X GET "http://localhost:8000/query_all_records"
+curl "http://localhost:8000/api/student/all-records/stu001"
 ```
 
-**响应示例**（成功）:
-```
-[
-  {
-    "id": 1,
-    "homework_id": "hw001",
-    "student_id": "stu001",
-    "pose_type": "pushup",
-    "processed_video_path": "homework/hw001/stu001/processed_video.mp4",
-    "total_count": 12,
-    "correct_count": 10,
-    "incorrect_count": 2,
-    "feedback_json": "{\"events\":[],\"performance\":{\"total_count\":12,\"correct_count\":10,\"incorrect_count\":2,\"accuracy_rate\":83.33}}",
-    "video_duration": 12.0,
-    "uploaded_at": "2023-01-01 12:00:00"
-  },
-  ...
-]
-```
-
-### 11. 获取学生所有记录接口
-
-**接口地址**: `GET /api/student/all-records/{student_id}`
-
-**功能描述**: 获取指定学生的所有健身动作记录，按上传时间倒序排列
-
-**请求参数**:
-- `student_id`: 学生ID（路径参数，必填）
-
-**请求示例**:
-```bash
-curl -X GET http://localhost:8000/api/student/all-records/stu001
-```
-
-**响应示例**:
-```
+**响应格式：**
+```json
 [
   {
     "id": 12,
     "homework_id": "hw001",
     "student_id": "stu001",
     "pose_type": "pushup",
-    "uploaded_at": "2023-12-01 10:30:00",
-    "original_video_path": null,
-    "processed_video_path": "homework/hw001/stu001/processed_video.mp4",
     "total_count": 15,
     "correct_count": 12,
     "incorrect_count": 3,
-    "feedback_json": "{\"events\":[],\"performance\":{\"total_count\":15,\"correct_count\":12,\"incorrect_count\":3,\"accuracy_rate\":80.0},\"video_info\":{\"total_frames\":180,\"processed_frames\":90,\"fps\":30,\"duration\":6.0}}",
-    "video_duration": 6.0
+    "feedback_json": "{\"events\":[...],\"performance\":{...}}",
+    "video_duration": 6.0,
+    "uploaded_at": "2023-12-01 10:30:00"
   },
   {
     "id": 8,
     "homework_id": "hw002",
     "student_id": "stu001",
     "pose_type": "squat",
-    "uploaded_at": "2023-11-28 14:15:00",
-    "original_video_path": null,
-    "processed_video_path": "homework/hw002/stu001/processed_video.mp4",
     "total_count": 20,
     "correct_count": 18,
     "incorrect_count": 2,
-    "feedback_json": "{\"events\":[],\"performance\":{\"total_count\":20,\"correct_count\":18,\"incorrect_count\":2,\"accuracy_rate\":90.0},\"video_info\":{\"total_frames\":240,\"processed_frames\":120,\"fps\":30,\"duration\":8.0}}",
-    "video_duration": 8.0
+    "feedback_json": "{\"events\":[...],\"performance\":{...}}",
+    "video_duration": 8.0,
+    "uploaded_at": "2023-11-28 14:15:00"
   }
 ]
 ```
 
-**响应字段说明**:
-- `id`: 记录ID
-- `homework_id`: 作业ID
-- `student_id`: 学生ID
-- `pose_type`: 动作类型
-- `uploaded_at`: 视频上传时间
-- `original_video_path`: 原始视频路径（可能为空）
-- `processed_video_path`: 处理后视频路径
-- `total_count`: 总动作次数
-- `correct_count`: 正确动作次数
-- `incorrect_count`: 错误动作次数
-- `feedback_json`: AI反馈数据（JSON格式）
-- `video_duration`: 视频时长（秒）
-
-**错误响应**:
-- 404: 未找到该学生记录
-- 500: 服务器内部错误
-
-### 12. 获取记录详情接口
-
-**接口地址**: `GET /get_record_details/{record_id}`
-
-**功能描述**: 获取指定记录的详细信息
-
-**请求参数**:
-- `record_id`: 记录ID（必填，路径参数）
-
-**请求示例**:
-```bash
-curl -X GET "http://localhost:8000/get_record_details/1"
-```
-
-**响应示例**（成功）:
-```
-{
-  "id": 1,
-  "homework_id": "hw001",
-  "student_id": "stu001",
-  "pose_type": "pushup",
-  "processed_video_path": "homework/hw001/stu001/processed_video.mp4",
-  "total_count": 12,
-  "correct_count": 10,
-  "incorrect_count": 2,
-  "feedback_json": "{\"events\":[],\"performance\":{\"total_count\":12,\"correct_count\":10,\"incorrect_count\":2,\"accuracy_rate\":83.33}}",
-  "video_duration": 12.0,
-  "uploaded_at": "2023-01-01 12:00:00"
-}
-```
-
-## 前端调用指南
-
-### JavaScript (使用 fetch API) 示例
-
-```
-// 设置基础URL
-const BASE_URL = 'http://localhost:8000';
-
-// 上传视频并处理 (使用SSE)
-const streamProcessVideo = async (file, poseType = 'pushup') => {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('pose_type', poseType);
-
-  try {
-    const response = await fetch(`${BASE_URL}/stream_process_video`, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (response.ok && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      let downloadUrl = null;
-      
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const eventData = JSON.parse(line.slice(6));
-              const { event, data } = eventData;
-              
-              switch (event) {
-                case 'init':
-                  console.log('初始化:', data.message);
-                  break;
-                case 'frame':
-                  console.log(`处理帧 ${data.frame_index}, 当前计数: ${data.count}`);
-                  break;
-                case 'final_stats':
-                  if (data.download_url) {
-                    downloadUrl = data.download_url;
-                    console.log('视频可供下载:', downloadUrl);
-                  } else {
-                    console.log('最终统计:', data);
-                  }
-                  break;
-                case 'error':
-                  console.error('处理出错:', data.message);
-                  break;
-              }
-            } catch (e) {
-              console.error('解析事件数据出错:', e);
-            }
-          }
-        }
-      }
-      
-      return { success: true, downloadUrl };
-    } else {
-      throw new Error('请求失败');
-    }
-  } catch (error) {
-    console.error('处理视频时发生错误:', error);
-    throw error;
-  }
-};
-
-// 下载处理后的视频
-const downloadProcessedVideo = async (downloadUrl, filename = 'processed_video.mp4') => {
-  try {
-    const response = await fetch(BASE_URL + downloadUrl);
-    if (response.ok) {
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      throw new Error('下载失败');
-    }
-  } catch (error) {
-    console.error('下载视频时发生错误:', error);
-    throw error;
-  }
-};
-
-// 上传视频并保存到指定目录
-const processAndSaveVideo = async (homeworkId, studentId, file, poseType = 'pushup') => {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  try {
-    const response = await fetch(
-      `${BASE_URL}/process_and_save_video?homework_id=${encodeURIComponent(homeworkId)}&student_id=${encodeURIComponent(studentId)}&pose_type=${encodeURIComponent(poseType)}`,
-      {
-        method: 'POST',
-        body: formData
-      }
-    );
-
-    if (response.ok && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      let result = null;
-      
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const eventData = JSON.parse(line.slice(6));
-              const { event, data } = eventData;
-              
-              if (event === 'final_stats' && data.video_url) {
-                result = data;
-              }
-            } catch (e) {
-              console.error('解析事件数据出错:', e);
-            }
-          }
-        }
-      }
-      
-      return result;
-    } else {
-      throw new Error('请求失败');
-    }
-  } catch (error) {
-    console.error('处理视频时发生错误:', error);
-    throw error;
-  }
-};
-
-// 获取已处理的视频
-const getProcessedVideo = async (homeworkId, studentId) => {
-  try {
-    const response = await fetch(
-      `${BASE_URL}/get_processed_video?homework_id=${encodeURIComponent(homeworkId)}&student_id=${encodeURIComponent(studentId)}`
-    );
-
-    if (response.ok) {
-      const blob = await response.blob();
-      const videoUrl = URL.createObjectURL(blob);
-      return videoUrl;
-    } else if (response.status === 404) {
-      throw new Error('未找到处理后的视频文件');
-    } else {
-      throw new Error('获取视频时发生错误');
-    }
-  } catch (error) {
-    console.error('获取视频时发生错误:', error);
-    throw error;
-  }
-};
-
-// 删除作业
-const deleteHomework = async (homeworkId) => {
-  try {
-    const response = await fetch(
-      `${BASE_URL}/delete_homework?homework_id=${encodeURIComponent(homeworkId)}`,
-      {
-        method: 'DELETE'
-      }
-    );
-
-    if (response.ok) {
-      const result = await response.json();
-      return result;
-    } else {
-      const errorData = await response.json();
-      throw new Error(errorData.detail);
-    }
-  } catch (error) {
-    console.error('删除作业时发生错误:', error);
-    throw error;
-  }
-};
-
-// 查询记录
-const queryRecords = async (homeworkId, studentId, poseType = null) => {
-  try {
-    let url = `${BASE_URL}/query_records?homework_id=${encodeURIComponent(homeworkId)}&student_id=${encodeURIComponent(studentId)}`;
-    if (poseType) {
-      url += `&pose_type=${encodeURIComponent(poseType)}`;
-    }
+**AIChat 服务调用示例：**
+```python
+# report_module.py 中的调用
+def get_yolo_student_all_records(student_id):
+    """获取学生所有运动记录，用于生成个性化建议"""
+    url = f"{YOLO_BASE_URL}/api/student/all-records/{student_id}"
+    response = requests.get(url, timeout=10)
     
-    const response = await fetch(url);
-    if (response.ok) {
-      const result = await response.json();
-      return result;
-    } else {
-      const errorData = await response.json();
-      throw new Error(errorData.detail);
-    }
-  } catch (error) {
-    console.error('查询记录时发生错误:', error);
-    throw error;
-  }
-};
+    if response.status_code == 200:
+        return response.json()
+    return None
+```
 
-// 使用示例
-const fileInput = document.getElementById('videoInput');
-fileInput.addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  if (file) {
-    try {
-      // 流式处理视频
-      const result = await streamProcessVideo(file, 'pushup');
-      console.log('处理结果:', result);
-      
-      if (result.downloadUrl) {
-        // 下载处理后的视频
-        await downloadProcessedVideo(result.downloadUrl);
+---
+
+## 数据库关联设计
+
+### 与 MySQL 数据库的关系
+
+```
+MySQL (se_project)                    SQLite (exercise_feedback)
+┌─────────────────────┐               ┌─────────────────────────┐
+│ homework            │               │ exercise_feedback       │
+│ ─────────────────── │               │ ─────────────────────── │
+│ id (PK)            │◄──────────────│ homework_id             │
+│ course_id          │               │ student_id              │
+│ title              │               │ pose_type               │
+│ deadline           │               │ total_count             │
+└─────────────────────┘               │ correct_count           │
+                                      │ incorrect_count         │
+┌─────────────────────┐               │ feedback_json           │
+│ submit              │               │ video_duration          │
+│ ─────────────────── │               │ processed_video_path    │
+│ id (PK)            │               └─────────────────────────┘
+│ homework_id (FK)   │◄──────────────┘
+│ student_id         │
+│ video_url          │
+│ score              │
+│ AI_feedback        │◄── 可从 feedback_json 提取
+│ teacher_feedback   │
+└─────────────────────┘
+```
+
+### 数据同步流程
+
+1. **学生提交视频**：前端调用 `/process_and_save_video`
+2. **AI 处理完成**：结果存入 SQLite `exercise_feedback` 表
+3. **前端获取结果**：调用 `/query_records` 获取 AI 评价
+4. **保存到 MySQL**：前端将 AI 评价保存到 `submit.AI_feedback` 字段
+
+---
+
+## 错误码定义
+
+| HTTP 状态码 | 说明 | 处理建议 |
+|------------|------|---------|
+| 200 | 成功 | 正常处理 |
+| 400 | 请求参数错误 | 检查参数格式和必填项 |
+| 404 | 资源不存在 | 检查 homework_id 和 student_id |
+| 422 | 参数验证失败 | 检查 pose_type 是否在支持列表中 |
+| 500 | 服务器内部错误 | 查看服务日志，可能是模型加载失败 |
+
+---
+
+## 服务配置
+
+### PE-AI-Backend 配置
+
+在 `application.yml` 中配置 Yolo_backend 地址：
+
+```yaml
+ai:
+  yolo:
+    base-url: http://localhost:8000
+```
+
+### 前端代理配置
+
+在 `vite.config.js` 中配置代理：
+
+```javascript
+export default defineConfig({
+  server: {
+    proxy: {
+      '/video': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
-    } catch (error) {
-      alert('处理失败: ' + error.message);
     }
   }
-});
+})
 ```
-
-### Axios 示例
-
-```
-import axios from 'axios';
-
-// 设置基础URL
-const BASE_URL = 'http://localhost:8000';
-
-// 上传视频并处理 (使用SSE)
-const streamProcessVideoWithAxios = async (file, poseType = 'pushup') => {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('pose_type', poseType);
-
-  try {
-    const response = await axios.post(
-      `${BASE_URL}/stream_process_video`,
-      formData,
-      {
-        responseType: 'stream'
-      }
-    );
-    
-    // 处理 SSE 流
-    // 注意：Axios 不直接支持 SSE，需要手动处理流数据
-    
-    return response;
-  } catch (error) {
-    if (error.response && error.response.data) {
-      throw new Error(JSON.stringify(error.response.data));
-    } else {
-      throw new Error('网络错误或服务器无响应');
-    }
-  }
-};
-```
-
-## 支持的动作类型
-
-| 动作类型 | 英文名称 | 说明 |
-|---------|---------|------|
-| 俯卧撑 | pushup | 手臂弯曲和伸直的运动 |
-| 腹肌训练 | abworkout | 腹部肌肉训练动作 |
-| 深蹲 | squat | 下肢力量训练动作 |
-| 硬拉 | deadlift | 后背及下肢综合训练动作 |
-| 卧推 | benchpress | 上肢力量训练动作 |
-
-## 数据返回格式
-
-### SSE 流式响应
-当视频处理时，后端会通过 SSE 流式返回多个事件：
-
-1. `init` 事件：初始化信息，包含视频基本信息
-2. `frame` 事件：每帧处理结果，包含当前计数等信息
-3. `final_stats` 事件：最终统计信息，包含最终计数和处理结果
-4. `error` 事件：错误信息
-
-### 成功响应
-当视频处理成功时，后端会返回以下数据：
-
-1. HTTP 状态码: `200 OK`
-2. 响应体: SSE 流式数据，包含处理过程和结果
-
-### 错误响应
-当处理过程中出现错误时，后端会返回 JSON 格式的错误信息：
-
-```json
-{
-  "status": "error",
-  "message": "错误描述信息",
-  "traceback": "详细的堆栈跟踪信息（仅在开发环境中提供）"
-}
-```
-
-## 错误处理
-
-接口可能返回以下 HTTP 状态码：
-
-| 状态码 | 说明 |
-|-------|------|
-| 200 | 请求成功 |
-| 400 | 请求参数错误，如无法读取视频文件 |
-| 404 | 请求的资源不存在（如视频文件未找到） |
-| 422 | 请求参数验证失败 |
-| 500 | 服务器内部错误 |
-| 503 | 服务暂时不可用 |
-
-## 使用流程
-
-1. 前端调用 [/health](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L353-L359) 接口确认后端服务正常运行
-2. 调用 [/supported_poses](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L361-L367) 获取支持的动作类型列表
-3. 用户选择动作类型并上传视频文件
-4. 调用 [/stream_process_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L246-L251) 接口处理视频（推荐使用流式处理）
-5. 或者调用 [/process_and_save_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L310-L327) 接口处理视频并保存到指定目录
-6. 使用 [/get_processed_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L335-L345) 接口获取已保存的处理视频
-7. 如需删除作业，可调用 [/delete_homework](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L347-L361) 接口删除指定作业的所有视频
-8. 使用 [/query_records](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L415-L441) 查询处理记录
-9. 使用 [/api/student/all-records/{student_id}](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L832-L870) 获取学生所有记录用于个性化分析
-
-## 注意事项
-
-1. 视频文件大小建议控制在合理范围内，过大的文件可能导致处理超时
-2. 处理时间与视频长度和复杂度有关，请设置合适的请求超时时间（建议5分钟）
-3. 确保上传的视频中人物清晰可见，背景不要太复杂
-4. 当前版本仅支持单人动作识别
-5. 建议在弱光环境下拍摄时注意光线均匀，避免逆光
-6. 前端在接收视频文件时需要正确处理 Blob 对象，并使用 `URL.createObjectURL()` 创建可播放的 URL
-7. 由于视频处理需要一定时间，建议在 UI 上提供加载状态指示
-8. 使用 [/process_and_save_video](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L310-L327) 接口时，相同 homework_id 和 student_id 的视频会被新上传的视频覆盖
-9. 使用 [/delete_homework](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L347-L361) 接口时请谨慎操作，删除操作不可恢复
-10. 处理完视频后，可以通过 [/query_records](file:///G:/Third_year_first_semester/SoftwareEngineering/Yolo_backend/main.py#L415-L441) 接口查询历史记录

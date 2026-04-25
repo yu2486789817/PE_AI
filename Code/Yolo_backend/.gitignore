@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 数据库（运行时生成）
+*.db
+
+# 上传的视频文件
+homework/
+
+# 日志
+*.log
+
+# 环境变量
+.env

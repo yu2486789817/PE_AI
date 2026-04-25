@@ -1,40 +1,73 @@
+"""
+SquatTracker - 深蹲动作识别器
+
+该模块实现了深蹲动作的识别、计数和姿势评估功能。
+
+识别原理：
+1. 使用 YOLOv8-pose 检测人体关键点
+2. 计算膝盖-髋部与垂直线的夹角判断动作阶段
+3. 通过状态机（s1→s2→s3→s1）识别完整动作周期
+4. 检测错误姿势：后倾过多、前倾过多、膝盖超过脚尖、下蹲过深
+
+关键点索引（COCO格式）：
+- 6: 右肩 (right_shoulder)
+- 12: 右髋 (right_hip)
+- 14: 右膝 (right_knee)
+- 16: 右踝 (right_ankle)
+
+状态机设计：
+- s1: 初始阶段（站立状态）
+- s2: 过渡阶段（下蹲中）
+- s3: 完成阶段（蹲到最低点）
+- 完整周期 s1→s2→s3→s1 计为一次有效深蹲
+"""
+
 import cv2
 import numpy as np
 from function import draw_text, calculate_angle, _show_feedback, draw_dotted_line
 import time
 
+
 class SquatTracker:
+    """
+    深蹲动作识别跟踪器。
+
+    功能：
+    - 检测深蹲动作并计数
+    - 识别错误姿势并提供实时反馈
+    - 记录每次动作的详细事件信息
+    """
+
     def __init__(self):
-        """
-        初始化深蹲状态追踪器。
-        """
-        # 初始化状态跟踪字典
+        """初始化深蹲状态追踪器。"""
+        # ========== 状态跟踪字典 ==========
         self.state_tracker = {
-            'state_seq': [],
-            'DISPLAY_TEXT': np.full((4,), False),
-            'COUNT_FRAMES': np.zeros((4,), dtype=np.int64),
-            'INCORRECT_POSTURE': False,
-            'curr_state': None,
-            'SQUAT_COUNT': 0,
-            'IMPROPER_SQUAT': 0,
-            'LOWER_HIPS': False  # 添加LOWER_HIPS标志
+            'state_seq': [],                          # 状态序列，记录动作阶段
+            'DISPLAY_TEXT': np.full((4,), False),     # 是否显示错误提示（4种错误类型）
+            'COUNT_FRAMES': np.zeros((4,), dtype=np.int64),  # 错误提示显示帧数
+            'INCORRECT_POSTURE': False,               # 当前是否存在错误姿势
+            'curr_state': None,                       # 当前动作状态
+            'SQUAT_COUNT': 0,                         # 正确深蹲计数
+            'IMPROPER_SQUAT': 0,                      # 错误深蹲计数
+            'LOWER_HIPS': False                       # 提示降低臀部的标志
         }
 
-        # 添加事件跟踪
-        self.events = []  # 存储关键事件
-        self.current_squat_id = None
-        self.squat_start_frame = None
-        self.last_improper_count = 0
+        # ========== 事件跟踪 ==========
+        self.events = []                    # 存储关键事件
+        self.current_squat_id = None        # 当前深蹲的唯一标识符
+        self.squat_start_frame = None       # 当前深蹲开始的帧号
+        self.last_improper_count = 0        # 上次错误计数
 
-        # 设置反馈信息映射
+        # ========== 错误提示映射 ==========
+        # 格式：{索引: (错误代码, Y坐标位置, 颜色)}
         self.FEEDBACK_ID_MAP = {
-            0: ('LEAN BACKWARDS', 215, (0, 153, 255)),       # 后倾过多
-            1: ('LEAN FORWARD', 215, (0, 153, 255)),          # 前倾过多
-            2: ('KNEE OVER TOE', 170, (255, 80, 80)),         # 膝盖超过脚尖
-            3: ('SQUAT TOO DEEP', 125, (255, 80, 80))         # 下蹲过深
+            0: ('LEAN BACKWARDS', 215, (0, 153, 255)),   # 后倾过多 - 橙色
+            1: ('LEAN FORWARD', 215, (0, 153, 255)),      # 前倾过多 - 橙色
+            2: ('KNEE OVER TOE', 170, (255, 80, 80)),     # 膝盖超过脚尖 - 红色
+            3: ('SQUAT TOO DEEP', 125, (255, 80, 80))     # 下蹲过深 - 红色
         }
 
-        # 获取阈值
+        # 获取阈值配置
         self.thresholds = self.get_thresholds_beginner()
 
     def get_thresholds(self):
@@ -48,45 +81,65 @@ class SquatTracker:
 
     def get_thresholds_beginner(self):
         """
-        获取初学者的阈值配置。
+        获取初学者模式的阈值设置。
+
+        阈值说明：
+        - HIP_KNEE_VERT: 膝盖-髋部与垂直线的夹角阈值
+          - NORMAL (0-32°): 站立状态
+          - TRANS (35-65°): 下蹲过渡状态
+          - PASS (70-95°): 蹲到最低点
+        - HIP_THRESH: 髋关节角度范围，用于检测前后倾
+        - ANKLE_THRESH: 踝关节角度阈值，检测膝盖是否超过脚尖
+        - KNEE_THRESH: 膝关节角度阈值范围
+        - OFFSET_THRESH: 偏移阈值
+        - INACTIVE_THRESH: 静止时间阈值（秒）
+        - CNT_FRAME_THRESH: 错误提示显示帧数阈值
+
+        返回:
+            dict: 阈值配置字典
         """
         _ANGLE_HIP_KNEE_VERT = {
-            'NORMAL': (0, 32),
-            'TRANS': (35, 65),
-            'PASS': (70, 95)
+            'NORMAL': (0, 32),    # 站立状态
+            'TRANS': (35, 65),    # 下蹲过渡状态
+            'PASS': (70, 95)      # 蹲到最低点
         }
 
         thresholds = {
             'HIP_KNEE_VERT': _ANGLE_HIP_KNEE_VERT,
-            'HIP_THRESH': [10, 50],
-            'ANKLE_THRESH': 45,
-            'KNEE_THRESH': [50, 70, 95],
-            'OFFSET_THRESH': 35.0,
-            'INACTIVE_THRESH': 15.0,
-            'CNT_FRAME_THRESH': 50
+            'HIP_THRESH': [10, 50],       # 髋关节角度范围
+            'ANKLE_THRESH': 45,           # 踝关节角度阈值
+            'KNEE_THRESH': [50, 70, 95],  # 膝关节角度阈值范围
+            'OFFSET_THRESH': 35.0,        # 偏移阈值
+            'INACTIVE_THRESH': 15.0,      # 静止时间阈值（秒）
+            'CNT_FRAME_THRESH': 50        # 错误提示显示帧数阈值
         }
         return thresholds
 
 
     def _get_state(self, knee_hip_angle):
         """
-        根据膝盖和髋部夹角判断姿势状态。
+        根据膝盖-髋部角度判断动作状态。
+
+        状态机设计：
+        - s1: 初始阶段（站立，角度0-32°）
+        - s2: 过渡阶段（下蹲中，角度35-65°）
+        - s3: 完成阶段（最低点，角度70-95°）
 
         参数:
-            knee_hip_angle (float): 膝盖和髋部之间的角度值。
+            knee_hip_angle: 膝盖-髋部与垂直线的夹角（度）
 
         返回:
-            str: 姿势状态（如 's1', 's2' 等），如果不在范围内则返回 None。
+            str: 状态标识（'s1', 's2', 's3'），如果不在范围内返回 None
         """
         knee = None
         if self.thresholds['HIP_KNEE_VERT']['NORMAL'][0] <= knee_hip_angle <= self.thresholds['HIP_KNEE_VERT']['NORMAL'][1]:
-            knee = 1  # 正常状态
+            knee = 1  # 正常状态（站立）
         elif self.thresholds['HIP_KNEE_VERT']['TRANS'][0] <= knee_hip_angle <= self.thresholds['HIP_KNEE_VERT']['TRANS'][1]:
-            knee = 2  # 过渡状态
+            knee = 2  # 过渡状态（下蹲中）
         elif self.thresholds['HIP_KNEE_VERT']['PASS'][0] <= knee_hip_angle <= self.thresholds['HIP_KNEE_VERT']['PASS'][1]:
-            knee = 3  # 完成状态
+            knee = 3  # 完成状态（蹲到最低点）
 
-        return f's{knee}' if knee else None  # 返回对应的状态，若无有效状态则返回 None
+        return f's{knee}' if knee else None
 
     def _update_state_sequence(self, state):
         """
@@ -227,67 +280,80 @@ class SquatTracker:
 
     def track(self, k, im0, ind, count, fps=30):
         """
-        处理深蹲检测和计数的主逻辑，包含状态跟踪、姿势检查和反馈显示。
+        处理深蹲检测与计数的主逻辑。
+
+        处理流程：
+        1. 提取关键点坐标
+        2. 计算髋、膝、踝关节角度
+        3. 判断动作状态并更新状态序列
+        4. 检测错误姿势
+        5. 绘制骨架和反馈信息
+        6. 记录事件
 
         参数:
-        - k: 姿势关键点
-        - im0: 当前帧图像
-        - ind: 当前处理对象的索引（对于单人模式，始终为0）
-        - count: 计数器列表（对于单人模式，只包含一个元素）
-        - fps: 视频帧率
+            k: YOLO 检测到的关键点数据
+            im0: 当前帧图像
+            ind: 人物索引（单人模式为0）
+            count: 计数器列表（通过引用传递更新计数）
+            fps: 视频帧率
+
+        返回:
+            dict: 包含处理后的图像、计数、事件等完整结果
         """
         frame_height, frame_width, _ = im0.shape
 
-        # 定义关节点坐标
+        # ========== 第一步：提取关键点坐标 ==========
+        # COCO 格式关键点索引：6=右肩, 12=右髋, 14=右膝, 16=右踝
         right_knee = (int(k[14][0].cpu().item()), int(k[14][1].cpu().item()))
         right_hip = (int(k[12][0].cpu().item()), int(k[12][1].cpu().item()))
         right_ankle = (int(k[16][0].cpu().item()), int(k[16][1].cpu().item()))
         right_shoulder = (int(k[6][0].cpu().item()), int(k[6][1].cpu().item()))
 
-        # 绘制辅助线和角度指示器，模仿MediaPipe的效果
-        # 绘制竖直虚线
+        # ========== 第二步：绘制辅助线 ==========
+        # 绘制竖直虚线作为参考线
         dotted_line_length = 60
         im0 = draw_dotted_line(im0, right_knee, right_knee[1] - dotted_line_length, right_knee[1], (255, 0, 0))
         im0 = draw_dotted_line(im0, right_hip, right_hip[1] - dotted_line_length, right_hip[1], (255, 0, 0))
         im0 = draw_dotted_line(im0, right_ankle, right_ankle[1] - dotted_line_length, right_ankle[1], (255, 0, 0))
 
-        # 计算各个角度
+        # ========== 第三步：计算关键角度 ==========
+        # 髋关节与垂直线夹角：检测前后倾
         hip_vertical_angle = calculate_angle(right_shoulder, right_hip, reference_direction="vertical")
+        # 膝关节与垂直线夹角：判断下蹲深度
         knee_vertical_angle = calculate_angle(right_hip, right_knee, reference_direction="vertical")
+        # 踝关节与垂直线夹角：检测膝盖是否超过脚尖
         ankle_vertical_angle = calculate_angle(right_knee, right_ankle, reference_direction="vertical")
-        
+        # 膝盖-髋部角度：判断动作阶段的核心指标
         knee_hip_angle = calculate_angle(right_hip, right_knee, reference_direction='vertical')
 
-        # 绘制骨架连线
-        color_light_blue = (204, 204, 0)  # BGR格式的浅蓝色
+        # ========== 第四步：绘制骨架和关节点 ==========
+        color_light_blue = (204, 204, 0)  # BGR 格式的浅蓝色
         cv2.line(im0, right_shoulder, right_hip, color_light_blue, 4)
         cv2.line(im0, right_hip, right_knee, color_light_blue, 4)
         cv2.line(im0, right_knee, right_ankle, color_light_blue, 4)
         
-        # 绘制关节点
-        color_yellow = (0, 255, 255)  # BGR格式的黄色
+        # ========== 第五步：绘制关节点和角度指示器 ==========
+        color_yellow = (0, 255, 255)  # BGR 格式的黄色
         cv2.circle(im0, right_shoulder, 7, color_yellow, -1)
         cv2.circle(im0, right_hip, 7, color_yellow, -1)
         cv2.circle(im0, right_knee, 7, color_yellow, -1)
         cv2.circle(im0, right_ankle, 7, color_yellow, -1)
 
-        # 绘制角度指示器
-        # 髋关节角度指示器
+        # 绘制角度指示器（白色弧线）
         if hip_vertical_angle is not None:
-            cv2.ellipse(im0, right_hip, (30, 30), angle=0, startAngle=-90, 
+            cv2.ellipse(im0, right_hip, (30, 30), angle=0, startAngle=-90,
                        endAngle=-90-hip_vertical_angle, color=(255, 255, 255), thickness=3)
-        
-        # 膝关节角度指示器
+
         if knee_vertical_angle is not None:
-            cv2.ellipse(im0, right_knee, (20, 20), angle=0, startAngle=-90, 
+            cv2.ellipse(im0, right_knee, (20, 20), angle=0, startAngle=-90,
                        endAngle=-90+knee_vertical_angle, color=(255, 255, 255), thickness=3)
-        
-        # 踝关节角度指示器
+
         if ankle_vertical_angle is not None:
-            cv2.ellipse(im0, right_ankle, (30, 30), angle=0, startAngle=-90, 
+            cv2.ellipse(im0, right_ankle, (30, 30), angle=0, startAngle=-90,
                        endAngle=-90-ankle_vertical_angle, color=(255, 255, 255), thickness=3)
 
-        # 绘制计数
+        # ========== 第六步：绘制计数和角度信息 ==========
+        # 正确计数（绿色背景）
         draw_text(
             im0,
             "CORRECT: " + str(self.state_tracker['SQUAT_COUNT']),
@@ -296,7 +362,8 @@ class SquatTracker:
             font_scale=0.7,
             text_color_bg=(18, 185, 0)
         )
-        
+
+        # 错误计数（红色背景）
         draw_text(
             im0,
             "INCORRECT: " + str(self.state_tracker['IMPROPER_SQUAT']),
@@ -305,8 +372,8 @@ class SquatTracker:
             font_scale=0.7,
             text_color_bg=(221, 0, 0),
         )
-        
-        # 调试：在屏幕上显示angle值
+
+        # 调试信息：显示角度值
         draw_text(
             im0,
             "ANGLE: " + str(round(knee_hip_angle, 2)),
@@ -315,77 +382,89 @@ class SquatTracker:
             font_scale=0.7,
             text_color_bg=(0, 0, 0)
         )
-        
-        # 获取当前状态
+
+        # ========== 第七步：状态判断和计数逻辑 ==========
         current_state = self._get_state(knee_hip_angle)
         self.state_tracker['curr_state'] = current_state
         self._update_state_sequence(current_state)
 
-        # 深蹲计数逻辑
+        # 计数逻辑：当回到 s1 状态时判断是否完成一次有效深蹲
         if current_state == 's1':
+            # 完整周期 s1→s2→s3→s1 且无错误姿势 = 正确深蹲
             if len(self.state_tracker['state_seq']) == 3 and not self.state_tracker['INCORRECT_POSTURE']:
                 self.state_tracker['SQUAT_COUNT'] += 1
-                count[0] += 1  # 更新传入的计数器列表中的第一个元素
+                count[0] += 1
+            # 只有 s2→s1，没有到达最低点 = 动作幅度不够
             elif 's2' in self.state_tracker['state_seq'] and len(self.state_tracker['state_seq']) == 1:
                 self.state_tracker['IMPROPER_SQUAT'] += 1
+            # 存在错误姿势 = 错误深蹲
             elif self.state_tracker['INCORRECT_POSTURE']:
                 self.state_tracker['IMPROPER_SQUAT'] += 1
+
+            # 重置状态
             self.state_tracker['state_seq'] = []
             self.state_tracker['INCORRECT_POSTURE'] = False
-            self.state_tracker['LOWER_HIPS'] = False  # 重置LOWER_HIPS标志
-        # 反馈显示逻辑
+            self.state_tracker['LOWER_HIPS'] = False
+
+        # ========== 第八步：错误姿势检测 ==========
         else:
-            # 检查各种错误姿势
+            # 检测后倾过多：髋关节角度过大
             if hip_vertical_angle > self.thresholds['HIP_THRESH'][1]:
                 self.state_tracker['DISPLAY_TEXT'][0] = True
+            # 检测前倾过多：髋关节角度过小
             elif hip_vertical_angle < self.thresholds['HIP_THRESH'][0] and self.state_tracker['state_seq'].count('s2') == 1:
                 self.state_tracker['DISPLAY_TEXT'][1] = True
 
+            # 检测下蹲深度：提示继续下蹲
             if self.thresholds['KNEE_THRESH'][0] < knee_vertical_angle < self.thresholds['KNEE_THRESH'][1] and \
                     self.state_tracker['state_seq'].count('s2') == 1:
                 self.state_tracker['LOWER_HIPS'] = True
+            # 检测下蹲过深
             elif knee_vertical_angle > self.thresholds['KNEE_THRESH'][2]:
                 self.state_tracker['DISPLAY_TEXT'][3] = True
                 self.state_tracker['INCORRECT_POSTURE'] = True
 
+            # 检测膝盖超过脚尖：踝关节角度过大
             if ankle_vertical_angle > self.thresholds['ANKLE_THRESH']:
                 self.state_tracker['DISPLAY_TEXT'][2] = True
                 self.state_tracker['INCORRECT_POSTURE'] = True
 
+            # 更新错误显示帧数
             self.state_tracker['COUNT_FRAMES'][self.state_tracker['DISPLAY_TEXT']] += 1
-            
-            # 显示"LOWER YOUR HIPS"提示
+
+            # 显示"LOWER YOUR HIPS"提示（黄色背景）
             if self.state_tracker['LOWER_HIPS']:
                 draw_text(
-                    im0, 
-                    'LOWER YOUR HIPS', 
+                    im0,
+                    'LOWER YOUR HIPS',
                     pos=(30, 80),
                     text_color=(0, 0, 0),
                     font_scale=0.6,
-                    text_color_bg=(0, 255, 255)  # 黄色背景
+                    text_color_bg=(0, 255, 255)
                 )
-            
+
             # 显示其他错误提示
             im0 = _show_feedback(im0, self.state_tracker['COUNT_FRAMES'], self.FEEDBACK_ID_MAP)
-            
-        # 重置显示文本
+
+        # ========== 第九步：重置和清理 ==========
+        # 重置超过显示帧数阈值的错误提示
         self.state_tracker['DISPLAY_TEXT'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = False
-        self.state_tracker['COUNT_FRAMES'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = 0    
-        
+        self.state_tracker['COUNT_FRAMES'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = 0
+
         # 记录事件
         self._record_events(count[0], fps)
-        
-        # 准备返回数据 - 添加详细的错误统计
+
+        # ========== 返回完整结果 ==========
         result_data = {
-            'processed_frame': im0,
-            'correct_count': self.state_tracker['SQUAT_COUNT'],
-            'incorrect_count': self.state_tracker['IMPROPER_SQUAT'],
-            'total_count': self.state_tracker['SQUAT_COUNT'] + self.state_tracker['IMPROPER_SQUAT'],
-            'events': self.events[-10:] if self.events else [],  # 只返回最近10个事件
-            'error_summary': self._get_error_summary(),  # 添加错误摘要
-            'squat_details': self._get_squat_details()   # 添加深蹲详情
+            'processed_frame': im0,                                              # 处理后的图像帧
+            'correct_count': self.state_tracker['SQUAT_COUNT'],                  # 正确计数
+            'incorrect_count': self.state_tracker['IMPROPER_SQUAT'],             # 错误计数
+            'total_count': self.state_tracker['SQUAT_COUNT'] + self.state_tracker['IMPROPER_SQUAT'],  # 总计数
+            'events': self.events[-10:] if self.events else [],                  # 最近10个事件
+            'error_summary': self._get_error_summary(),                          # 错误摘要
+            'squat_details': self._get_squat_details()                           # 深蹲详情
         }
-        
+
         return result_data
 
     def _get_error_summary(self):

@@ -1,0 +1,19 @@
+# Yolo_backend Dependencies
+# AI Video Processing Service for PE Teaching Platform
+
+# ================= Core Dependencies =================
+# Web Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# ================= YOLO Model =================
+# Ultralytics YOLOv8 (includes torch dependency)
+ultralytics>=8.0.0
+
+# ================= Image Processing =================
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# ================= Optional =================
+# For video encoding/decoding optimization
+# ffmpeg-python>=0.2.0

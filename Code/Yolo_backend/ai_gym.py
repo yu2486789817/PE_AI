@@ -1,145 +1,221 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+"""
+AIGym - 健身动作识别核心协调类
+
+该模块是 YOLO 视频处理服务的核心组件，负责：
+1. 加载和管理 YOLOv8-pose 姿态估计模型
+2. 协调不同运动类型的 Tracker（俯卧撑、深蹲、硬拉）
+3. 处理视频帧并返回动作计数和反馈结果
+
+架构设计：
+- AIGym 作为协调者，不直接实现动作识别逻辑
+- 具体的动作识别由各个 Tracker 类实现（PushupTracker、SquatTracker、DeadliftTracker）
+- 采用策略模式，通过 pose_type 参数选择不同的 Tracker
+
+使用示例：
+    gym = AIGym(kpts_to_check=[6, 8, 10], pose_type="pushup")
+    processed_frame, count = gym.monitor(frame)
+"""
+
 import cv2
+import os
 import logging
 from ultralytics.solutions.solutions import BaseSolution
 from ultralytics.utils.plotting import Annotator
 import traceback
 
-# 尝试导入所有运动类型的跟踪器类
+# 导入各运动类型的跟踪器类
 try:
     from squat import SquatTracker
     from deadlift import DeadliftTracker
     from pushup import PushupTracker
 except ImportError as e:
-    logging.error(f"Failed to import tracker modules: {e}")
+    logging.error(f"无法导入跟踪器模块: {e}")
 
-# 设置日志记录
+# 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ================= 路径配置 =================
+# 获取当前脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
+
+# 默认模型路径（按优先级）
+DEFAULT_MODEL_PATHS = [
+    os.path.join(SCRIPT_DIR, "yolov8n-pose.pt"),
+    os.path.join(MODELS_DIR, "yolov8n-pose.pt"),
+    "yolov8n-pose.pt",  # 回退到 ultralytics 默认下载路径
+]
+
+
+def _find_model_path():
+    """查找可用的模型路径。"""
+    for path in DEFAULT_MODEL_PATHS:
+        if os.path.exists(path):
+            return path
+    # 如果都不存在，返回默认名称（ultralytics 会自动下载）
+    return "yolov8n-pose.pt"
+
 
 class AIGym(BaseSolution):
     def __init__(self, kpts_to_check, line_thickness=2, pose_type="pushup",
                  **kwargs):
-        # Check if the model name ends with '-pose'
-        if "model" in kwargs and "-pose" not in kwargs["model"]:
-            kwargs["model"] = "yolov8n-pose.pt"
-        elif "model" not in kwargs:
-            kwargs["model"] = "yolov8n-pose.pt"
+        """
+        初始化 AIGym 健身动作识别器。
 
-        """初始化 AIGym，以便使用姿态估计和预定义角度监控锻炼。"""
-        self.im0 = None
-        self.tf = line_thickness
-        self.keypoints = None
-        self.threshold = 0.001
-        self.angle = None
-        self.count = None
-        self.stage = None
-        self.pose_type = pose_type
-        self.annotator = None
-        # self.env_check = check_imshow(warn=True)
-        self.fps = 30
-        self.result_data = {}  # 添加这个属性存储结果数据
+        参数:
+            kpts_to_check: 用于角度计算的关键点索引列表
+                - 俯卧撑: [6, 8, 10] (右肩-右肘-右腕)
+                - 深蹲: [12, 14, 16] (右髋-右膝-右踝)
+                - 硬拉: [6, 12, 14] (右肩-右髋-右膝)
+            line_thickness: 绘制骨架线的粗细，默认为2
+            pose_type: 动作类型，支持 "pushup"、"squat"、"deadlift"
+            **kwargs: 其他传递给 BaseSolution 的参数
+        """
+        # 确保使用姿态估计模型（而非普通检测模型）
+        # 使用绝对路径查找模型
+        if "model" not in kwargs:
+            kwargs["model"] = _find_model_path()
+        elif "model" in kwargs and "-pose" not in kwargs["model"]:
+            kwargs["model"] = _find_model_path()
 
+        # 初始化基础属性
+        self.im0 = None                    # 当前处理的图像帧
+        self.tf = line_thickness           # 线条粗细
+        self.keypoints = None              # 检测到的关键点
+        self.threshold = 0.001             # 关键点置信度阈值
+        self.angle = None                  # 当前角度值
+        self.count = None                  # 动作计数
+        self.stage = None                  # 动作阶段
+        self.pose_type = pose_type         # 动作类型
+        self.annotator = None              # 图像标注器
+        self.fps = 30                      # 视频帧率
+        self.result_data = {}              # 存储完整的处理结果数据
+
+        # 调用父类初始化
         super().__init__(**kwargs)
+
+        # 初始化计数和状态
         self.count = 0
         self.angle = 0
         self.stage = "-"
-        # 从配置中提取详细信息以供后续使用
+
+        # 从配置文件读取角度阈值
+        # up_angle: 动作"向上"阶段的角度阈值（如俯卧撑撑起时）
+        # down_angle: 动作"向下"阶段的角度阈值（如俯卧撑下压时）
         self.initial_stage = None
-        self.poseup_angle = float(self.CFG["up_angle"])  # 预定义的"向上"姿态角度
-        self.posedown_angle = float(self.CFG["down_angle"])  # 预定义的"向下"姿态角度
-        self.kpts = kpts_to_check  # 用户选择的用于锻炼的关键点存储，以供后续使用
-        self.lw = line_thickness  # 确保这里赋值
+        self.poseup_angle = float(self.CFG["up_angle"])
+        self.posedown_angle = float(self.CFG["down_angle"])
+        self.kpts = kpts_to_check          # 用户指定的关键点索引
+        self.lw = line_thickness
 
-        # 实例化跟踪器
+        # 根据动作类型实例化对应的 Tracker
+        # 采用策略模式，不同运动使用不同的识别算法
         if pose_type == "squat":
-            self.tracker = SquatTracker()  # 实例化 SquatTracker 类
+            self.tracker = SquatTracker()
         elif pose_type == "deadlift":
-            self.tracker = DeadliftTracker()  # 实例化 DeadliftTracker 类
+            self.tracker = DeadliftTracker()
         elif pose_type == "pushup":
-            self.tracker = PushupTracker()  # 实例化 PushupTracker
+            self.tracker = PushupTracker()
         else:
-            logger.warning(f"Unsupported pose type: {pose_type}. Using default tracker.")
-            self.tracker = PushupTracker()  # 默认使用 PushupTracker
+            logger.warning(f"不支持的动作类型: {pose_type}，使用默认跟踪器")
+            self.tracker = PushupTracker()
 
-        # 从跟踪器获取相关属性
+        # 从 Tracker 获取共享属性和方法
         self._get_state = self.tracker._get_state
         self.state_tracker = self.tracker.state_tracker
         self._update_state_sequence = self.tracker._update_state_sequence
         self.thresholds = self.tracker.thresholds
-        self.FEEDBACK_ID_MAP = self.tracker.FEEDBACK_ID_MAP  # 获取反馈映射
+        self.FEEDBACK_ID_MAP = self.tracker.FEEDBACK_ID_MAP
 
     def monitor(self, im0):
-        # 提取跟踪数据
+        """
+        处理单帧图像，进行姿态估计和动作识别。
+
+        这是 AIGym 的核心方法，处理流程：
+        1. 使用 YOLO 模型检测人体姿态关键点
+        2. 计算指定关键点的角度
+        3. 调用对应 Tracker 进行动作识别和计数
+        4. 在图像上绘制骨架和反馈信息
+
+        参数:
+            im0: 输入的 BGR 格式图像帧
+
+        返回:
+            tuple: (处理后的图像帧, 当前动作计数)
+        """
+        # ========== 第一步：YOLO 模型姿态检测 ==========
         try:
             logger.debug("开始YOLO模型跟踪处理...")
-            # 克隆或复制帧以避免资源冲突
-            frame_copy = im0.copy()
+            frame_copy = im0.copy()  # 复制帧避免资源冲突
             logger.debug("帧复制完成")
+
+            # 调用 YOLO 模型进行姿态跟踪
+            # persist=True 启用跟踪持久化，提高跨帧一致性
             tracks = self.model.track(source=frame_copy, persist=True, classes=self.CFG["classes"])[0]
             logger.debug("YOLO模型跟踪完成")
         except Exception as e:
-            error_msg = f"Error tracking objects: {e}"
+            error_msg = f"模型跟踪错误: {e}"
             logger.error(error_msg)
             logger.error(traceback.format_exc())
-            return im0, 0  # 返回原始图像和计数0
-        
-        # 添加空结果检查
+            return im0, 0
+
+        # 检查是否检测到人体
         if not tracks or len(tracks) == 0:
-            logger.info("No tracks found in the frame")
-            return im0, 0  # 返回原始图像和计数0
-            
-        # 只处理第一个人物（索引为0）
+            logger.info("当前帧未检测到人体")
+            return im0, 0
+
+        # ========== 第二步：处理检测结果 ==========
         if tracks.boxes.id is not None:
-            # 初始化注释对象
+            # 初始化图像标注器
             self.annotator = Annotator(im0, line_width=self.lw)
 
-            # 只处理第一个检测到的人物
-            k = tracks.keypoints.data[0]  # 只获取第一个人的关键点数据
+            # 只处理第一个检测到的人物（单人模式）
+            k = tracks.keypoints.data[0]
 
-            # 获取关键点并估计角度
+            # 计算关键点角度
             try:
+                # 提取指定的关键点坐标
                 kpts = [k[int(self.kpts[i])].cpu() for i in range(3)]
+                # 估计姿态角度
                 self.angle = self.annotator.estimate_pose_angle(*kpts)
+                # 绘制关键点
                 im0 = self.annotator.draw_specific_points(k, self.kpts, radius=self.lw * 3)
             except Exception as e:
-                logger.error(f"Error processing keypoints: {e}")
+                logger.error(f"关键点处理错误: {e}")
                 logger.error(traceback.format_exc())
 
-            # 使用跟踪器处理特定运动类型
-
+            # ========== 第三步：调用 Tracker 进行动作识别 ==========
             if self.pose_type in {"deadlift", "pushup", "squat"}:
-                # 调用 track 方法，传入一个只有一个元素的列表 [self.count]
                 try:
-                    # 创建一个包含单个元素的列表传递给tracker
+                    # 创建计数器列表（通过列表传递实现引用传递）
                     count_list = [self.count]
-                    # 调用tracker的track方法，传入fps参数
+
+                    # 调用 Tracker 的 track 方法进行动作识别
+                    # 参数：关键点数据、图像帧、索引（单人模式为0）、计数器、帧率
                     tracker_result = self.tracker.track(k, im0, 0, count_list, fps=self.fps)
-                    
-                    # 检查返回的数据类型
+
+                    # 处理返回结果
                     if isinstance(tracker_result, dict):
-                        # 从字典中提取处理后的图像
+                        # 新版本返回字典，包含完整的处理结果
                         im0 = tracker_result.get('processed_frame', im0)
-                        # 保存完整的结果数据
                         self.result_data = tracker_result
                     else:
-                        # 向后兼容：直接返回的是图像
+                        # 向后兼容：直接返回图像
                         im0 = tracker_result
-                        # 创建一个基本的结果数据结构
                         self.result_data = {
                             'processed_frame': im0,
                             'correct_count': self.count,
                             'incorrect_count': 0,
                             'events': []
                         }
-                    
+
                     # 更新计数器
                     self.count = count_list[0]
-                    
+
                 except Exception as e:
-                    logger.error(f"Error tracking {self.pose_type}: {e}")
+                    logger.error(f"动作跟踪错误 [{self.pose_type}]: {e}")
                     logger.error(traceback.format_exc())
-                    # 出错时设置基本数据
                     self.result_data = {
                         'processed_frame': im0,
                         'correct_count': self.count,
@@ -147,8 +223,8 @@ class AIGym(BaseSolution):
                         'events': []
                     }
 
-
+        # 绘制关键点连线
         if hasattr(self.annotator, 'kpts'):
-            self.annotator.kpts(k, shape=(640,640), radius=1, kpt_line=True)
-            
-        return im0, self.count  # 返回处理后的图像和计数值
+            self.annotator.kpts(k, shape=(640, 640), radius=1, kpt_line=True)
+
+        return im0, self.count
