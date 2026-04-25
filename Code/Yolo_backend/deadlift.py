@@ -1,38 +1,73 @@
+"""
+DeadliftTracker - 硬拉动作识别器
+
+该模块实现了硬拉动作的识别、计数和姿势评估功能。
+
+识别原理：
+1. 使用 YOLOv8-pose 检测人体关键点
+2. 计算肩-髋-膝的复合角度判断动作阶段
+3. 通过状态机（s1→s2→s3→s1）识别完整动作周期
+4. 检测错误姿势：背部过度弯曲、膝盖过低、手臂弯曲
+
+关键点索引（COCO格式）：
+- 6: 右肩 (right_shoulder)
+- 8: 右肘 (right_elbow)
+- 10: 右腕 (right_wrist)
+- 12: 右髋 (right_hip)
+- 14: 右膝 (right_knee)
+- 16: 右踝 (right_ankle)
+
+状态机设计：
+- s1: 初始阶段（下放状态，杠铃在低处）
+- s2: 过渡阶段（拉起中）
+- s3: 完成阶段（站立，杠铃在髋部）
+- 完整周期 s1→s2→s3→s1 计为一次有效硬拉
+"""
+
 import numpy as np
 from function import draw_text, calculate_angle, _show_feedback, draw_dotted_line
 import cv2
 import time
 
+
 class DeadliftTracker:
+    """
+    硬拉动作识别跟踪器。
+
+    功能：
+    - 检测硬拉动作并计数
+    - 识别错误姿势并提供实时反馈
+    - 记录每次动作的详细事件信息
+    """
+
     def __init__(self):
-        """
-        初始化硬拉状态追踪器。
-        """
-        # 初始化状态跟踪字典
+        """初始化硬拉状态追踪器。"""
+        # ========== 状态跟踪字典 ==========
         self.state_tracker = {
-            'state_seq': [],
-            'DISPLAY_TEXT': np.full((4,), False),
-            'COUNT_FRAMES': np.zeros((4,), dtype=np.int64),
-            'INCORRECT_POSTURE': False,
-            'curr_state': None,
-            'DEADLIFT_COUNT': 0,
-            'IMPROPER_DEADLIFT': 0
+            'state_seq': [],                          # 状态序列，记录动作阶段
+            'DISPLAY_TEXT': np.full((4,), False),     # 是否显示错误提示（4种错误类型）
+            'COUNT_FRAMES': np.zeros((4,), dtype=np.int64),  # 错误提示显示帧数
+            'INCORRECT_POSTURE': False,               # 当前是否存在错误姿势
+            'curr_state': None,                       # 当前动作状态
+            'DEADLIFT_COUNT': 0,                      # 正确硬拉计数
+            'IMPROPER_DEADLIFT': 0                    # 错误硬拉计数
         }
 
-        # 添加事件跟踪
-        self.events = []  # 存储关键事件
-        self.current_deadlift_id = None
-        self.deadlift_start_frame = None
-        self.last_improper_count = 0
+        # ========== 事件跟踪 ==========
+        self.events = []                       # 存储关键事件
+        self.current_deadlift_id = None        # 当前硬拉的唯一标识符
+        self.deadlift_start_frame = None       # 当前硬拉开始的帧号
+        self.last_improper_count = 0           # 上次错误计数
 
-        # 设置反馈信息映射
+        # ========== 错误提示映射 ==========
+        # 格式：{索引: (错误代码, Y坐标位置, 颜色)}
         self.FEEDBACK_ID_MAP = {
-            0: ('BACK TOO ARCHED', 215, (0, 153, 255)),  # 背部过度弯曲
-            1: ('KNEE TOO LOW', 215, (0, 153, 255)),     # 膝盖过低
-            2: ('ARM BENDING', 125, (255, 80, 80))       # 手臂弯曲
+            0: ('BACK TOO ARCHED', 215, (0, 153, 255)),   # 背部过度弯曲 - 橙色
+            1: ('KNEE TOO LOW', 215, (0, 153, 255)),      # 膝盖过低 - 橙色
+            2: ('ARM BENDING', 125, (255, 80, 80))        # 手臂弯曲 - 红色
         }
 
-        # 获取阈值
+        # 获取阈值配置
         self.thresholds = self.get_thresholds_beginner()
 
     def get_thresholds(self):
@@ -45,17 +80,33 @@ class DeadliftTracker:
         return self.get_thresholds_beginner()
 
     def get_thresholds_beginner(self):
-        """获取初学者模式的阈值设置"""
+        """
+        获取初学者模式的阈值设置。
+
+        阈值说明：
+        - SHOULDER_HIP_KNEE: 肩-髋-膝复合角度阈值
+          - NORMAL (45-90°): 下放阶段
+          - TRANS (95-130°): 过渡阶段
+          - PASS (135-180°): 站立完成阶段
+        - HIP_THRESH: 髋关节角度阈值，检测背部弯曲
+        - KNEE_THRESH: 膝关节角度阈值，检测膝盖位置
+        - ARM_THRESH: 手臂角度阈值，检测手臂是否弯曲
+        - INACTIVE_THRESH: 静止时间阈值（秒）
+        - CNT_FRAME_THRESH: 错误提示显示帧数阈值
+
+        返回:
+            dict: 阈值配置字典
+        """
         thresholds = {
             'SHOULDER_HIP_KNEE': {
-                'NORMAL': (45, 90),  # 初始阶段
-                'TRANS': (95, 130),  # 过渡阶段
-                'PASS': (135, 180)    # 完成阶段
+                'NORMAL': (45, 90),    # 下放阶段
+                'TRANS': (95, 130),    # 过渡阶段
+                'PASS': (135, 180)     # 完成阶段
             },
-            'HIP_THRESH': 50,      # 髋关节角度阈值
-            'KNEE_THRESH': 45,     # 膝关节角度范围
-            'ARM_THRESH': 150,
-            'INACTIVE_THRESH': 15.0,   # 静止时间阈值 (秒)
+            'HIP_THRESH': 50,          # 髋关节角度阈值
+            'KNEE_THRESH': 45,         # 膝关节角度范围
+            'ARM_THRESH': 150,         # 手臂角度阈值
+            'INACTIVE_THRESH': 15.0,   # 静止时间阈值（秒）
             'CNT_FRAME_THRESH': 50     # 维持帧数阈值
         }
         return thresholds
@@ -216,23 +267,36 @@ class DeadliftTracker:
 
     def track(self, k, im0, ind, count, fps=30):
         """
-        处理硬拉检测和计数的主逻辑，包含状态跟踪、姿势检查和反馈显示。
+        处理硬拉检测与计数的主逻辑。
+
+        处理流程：
+        1. 提取关键点坐标
+        2. 计算肩-髋-膝复合角度
+        3. 判断动作状态并更新状态序列
+        4. 检测错误姿势
+        5. 绘制骨架和反馈信息
+        6. 记录事件
 
         参数:
-        - k: 姿势关键点
-        - im0: 当前帧图像
-        - ind: 当前处理对象的索引（对于单人模式，始终为0）
-        - count: 计数器列表（对于单人模式，只包含一个元素）
-        - fps: 视频帧率
+            k: YOLO 检测到的关键点数据
+            im0: 当前帧图像
+            ind: 人物索引（单人模式为0）
+            count: 计数器列表（通过引用传递更新计数）
+            fps: 视频帧率
+
+        返回:
+            dict: 包含处理后的图像、计数、事件等完整结果
         """
         frame_height, frame_width, _ = im0.shape
-        
-        # 计算角度
-        hip_knee_angle = calculate_angle(k[12].cpu(), k[14].cpu(), reference_direction='horizontal')  # 髋膝夹角，参考水平
-        shoulder_hip_angle = calculate_angle(k[6].cpu(), k[12].cpu(), reference_direction='horizontal')  # 肩膝夹角，参考水平
+
+        # ========== 第一步：计算复合角度 ==========
+        # 硬拉使用肩-髋-膝的复合角度判断动作阶段
+        hip_knee_angle = calculate_angle(k[12].cpu(), k[14].cpu(), reference_direction='horizontal')
+        shoulder_hip_angle = calculate_angle(k[6].cpu(), k[12].cpu(), reference_direction='horizontal')
         shoulder_hip_knee_angle = shoulder_hip_angle + hip_knee_angle
-        
-        # 定义关节点坐标
+
+        # ========== 第二步：提取关键点坐标 ==========
+        # COCO 格式关键点索引：6=右肩, 8=右肘, 10=右腕, 12=右髋, 14=右膝, 16=右踝
         right_knee = (int(k[14][0].cpu().item()), int(k[14][1].cpu().item()))
         right_hip = (int(k[12][0].cpu().item()), int(k[12][1].cpu().item()))
         right_shoulder = (int(k[6][0].cpu().item()), int(k[6][1].cpu().item()))
@@ -240,29 +304,30 @@ class DeadliftTracker:
         right_wrist = (int(k[10][0].cpu().item()), int(k[10][1].cpu().item()))
         right_elbow = (int(k[8][0].cpu().item()), int(k[8][1].cpu().item()))
 
-        # 绘制辅助线和角度指示器，模仿MediaPipe的效果
-        # 绘制竖直虚线
+        # ========== 第三步：绘制辅助线 ==========
         dotted_line_length = 60
         im0 = draw_dotted_line(im0, right_knee, right_knee[1] - dotted_line_length, right_knee[1], (255, 0, 0))
         im0 = draw_dotted_line(im0, right_hip, right_hip[1] - dotted_line_length, right_hip[1], (255, 0, 0))
 
-        # 计算各个角度
+        # ========== 第四步：计算检测角度 ==========
+        # 肩-髋与垂直线夹角：检测背部弯曲
         shoulder_hip_vertical_angle = calculate_angle(k[6].cpu(), k[12].cpu(), reference_direction="vertical")
+        # 膝-踝与垂直线夹角：检测膝盖位置
         knee_ankle_vertical_angle = calculate_angle(k[14].cpu(), k[16].cpu(), reference_direction="vertical")
+        # 手臂角度：检测手臂是否弯曲
         wrist_elbow_angle = calculate_angle(k[8].cpu(), k[10].cpu(), reference_direction="horizontal")
         elbow_shoulder_angle = calculate_angle(k[6].cpu(), k[8].cpu(), reference_direction="horizontal")
         arm_angle = wrist_elbow_angle + elbow_shoulder_angle
 
-        # 绘制骨架连线
-        color_light_blue = (204, 204, 0)  # BGR格式的浅蓝色
+        # ========== 第五步：绘制骨架和关节点 ==========
+        color_light_blue = (204, 204, 0)  # BGR 格式的浅蓝色
         cv2.line(im0, right_shoulder, right_hip, color_light_blue, 4)
         cv2.line(im0, right_hip, right_knee, color_light_blue, 4)
         cv2.line(im0, right_knee, right_ankle, color_light_blue, 4)
         cv2.line(im0, right_shoulder, right_elbow, color_light_blue, 4)
         cv2.line(im0, right_elbow, right_wrist, color_light_blue, 4)
-        
-        # 绘制关节点
-        color_yellow = (0, 255, 255)  # BGR格式的黄色
+
+        color_yellow = (0, 255, 255)  # BGR 格式的黄色
         cv2.circle(im0, right_shoulder, 7, color_yellow, -1)
         cv2.circle(im0, right_hip, 7, color_yellow, -1)
         cv2.circle(im0, right_knee, 7, color_yellow, -1)
@@ -270,18 +335,17 @@ class DeadliftTracker:
         cv2.circle(im0, right_elbow, 7, color_yellow, -1)
         cv2.circle(im0, right_wrist, 7, color_yellow, -1)
 
-        # 绘制角度指示器
-        # 肩膀-髋部角度指示器（垂直方向）
+        # 绘制角度指示器（白色弧线）
         if shoulder_hip_vertical_angle is not None:
-            cv2.ellipse(im0, right_hip, (30, 30), angle=0, startAngle=-90, 
+            cv2.ellipse(im0, right_hip, (30, 30), angle=0, startAngle=-90,
                        endAngle=-90-shoulder_hip_vertical_angle, color=(255, 255, 255), thickness=3)
-        
-        # 膝盖-踝关节角度指示器（垂直方向）
+
         if knee_ankle_vertical_angle is not None:
-            cv2.ellipse(im0, right_knee, (20, 20), angle=0, startAngle=-90, 
+            cv2.ellipse(im0, right_knee, (20, 20), angle=0, startAngle=-90,
                        endAngle=-90+knee_ankle_vertical_angle, color=(255, 255, 255), thickness=3)
 
-        # 绘制计数
+        # ========== 第六步：绘制计数和角度信息 ==========
+        # 正确计数（绿色背景）
         draw_text(
             im0,
             "CORRECT: " + str(self.state_tracker['DEADLIFT_COUNT']),
@@ -290,7 +354,8 @@ class DeadliftTracker:
             font_scale=0.7,
             text_color_bg=(18, 185, 0)
         )
-        
+
+        # 错误计数（红色背景）
         draw_text(
             im0,
             "INCORRECT: " + str(self.state_tracker['IMPROPER_DEADLIFT']),
@@ -299,8 +364,8 @@ class DeadliftTracker:
             font_scale=0.7,
             text_color_bg=(221, 0, 0),
         )
-        
-        # 调试：在屏幕上显示angle值
+
+        # 调试信息：显示角度值
         draw_text(
             im0,
             "ANGLE: " + str(round(shoulder_hip_knee_angle, 2)),
@@ -309,60 +374,70 @@ class DeadliftTracker:
             font_scale=0.7,
             text_color_bg=(0, 0, 0)
         )
-        
-        # 获取当前状态
+
+        # ========== 第七步：状态判断和计数逻辑 ==========
         current_state = self._get_state(shoulder_hip_knee_angle)
         self.state_tracker['curr_state'] = current_state
         self._update_state_sequence(current_state)
 
-        # 硬拉计数逻辑
+        # 计数逻辑：当回到 s1 状态时判断是否完成一次有效硬拉
         if current_state == 's1':
+            # 完整周期 s1→s2→s3→s1 且无错误姿势 = 正确硬拉
             if len(self.state_tracker['state_seq']) == 3 and not self.state_tracker['INCORRECT_POSTURE']:
                 self.state_tracker['DEADLIFT_COUNT'] += 1
-                count[0] += 1  # 更新传入的计数器列表中的第一个元素
+                count[0] += 1
+            # 只有 s2→s1，没有到达最高点 = 动作幅度不够
             elif 's2' in self.state_tracker['state_seq'] and len(self.state_tracker['state_seq']) == 1:
                 self.state_tracker['IMPROPER_DEADLIFT'] += 1
+            # 存在错误姿势 = 错误硬拉
             elif self.state_tracker['INCORRECT_POSTURE']:
                 self.state_tracker['IMPROPER_DEADLIFT'] += 1
+
+            # 重置状态
             self.state_tracker['state_seq'] = []
             self.state_tracker['INCORRECT_POSTURE'] = False
-        # 反馈显示逻辑
+
+        # ========== 第八步：错误姿势检测 ==========
         else:
-            # 检查各种错误姿势
+            # 检测背部过度弯曲：肩-髋角度过大
             if shoulder_hip_vertical_angle > self.thresholds['HIP_THRESH']:
                 self.state_tracker['DISPLAY_TEXT'][0] = True
-                
+
+            # 检测膝盖过低：膝-踝角度过大
             if knee_ankle_vertical_angle > self.thresholds['KNEE_THRESH']:
                 self.state_tracker['DISPLAY_TEXT'][1] = True
                 self.state_tracker['INCORRECT_POSTURE'] = True
 
+            # 检测手臂弯曲：手臂角度过小
             if arm_angle < self.thresholds['ARM_THRESH']:
                 self.state_tracker['DISPLAY_TEXT'][2] = True
                 self.state_tracker['INCORRECT_POSTURE'] = True
 
+            # 更新错误显示帧数
             self.state_tracker['COUNT_FRAMES'][self.state_tracker['DISPLAY_TEXT']] += 1
-            
+
             # 显示错误提示
             im0 = _show_feedback(im0, self.state_tracker['COUNT_FRAMES'], self.FEEDBACK_ID_MAP)
-            
-        # 重置显示文本
+
+        # ========== 第九步：重置和清理 ==========
+        # 重置超过显示帧数阈值的错误提示
         self.state_tracker['DISPLAY_TEXT'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = False
-        self.state_tracker['COUNT_FRAMES'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = 0    
-        
+        self.state_tracker['COUNT_FRAMES'][self.state_tracker['COUNT_FRAMES'] > self.thresholds['CNT_FRAME_THRESH']] = 0
+
         # 记录事件
         self._record_events(count[0], fps)
-        
-        # 准备返回数据 - 添加详细的错误统计
+
+        # ========== 返回完整结果 ==========
         result_data = {
-            'processed_frame': im0,
-            'correct_count': self.state_tracker['DEADLIFT_COUNT'],
-            'incorrect_count': self.state_tracker['IMPROPER_DEADLIFT'],
-            'total_count': self.state_tracker['DEADLIFT_COUNT'] + self.state_tracker['IMPROPER_DEADLIFT'],
-            'events': self.events[-10:] if self.events else [],  # 只返回最近10个事件
-            'error_summary': self._get_error_summary(),  # 添加错误摘要
-            'deadlift_details': self._get_deadlift_details()   # 添加硬拉详情
+            'processed_frame': im0,                                                   # 处理后的图像帧
+            'correct_count': self.state_tracker['DEADLIFT_COUNT'],                    # 正确计数
+            'incorrect_count': self.state_tracker['IMPROPER_DEADLIFT'],               # 错误计数
+            'total_count': self.state_tracker['DEADLIFT_COUNT'] + self.state_tracker['IMPROPER_DEADLIFT'],  # 总计数
+            'events': self.events[-10:] if self.events else [],                       # 最近10个事件
+            'error_summary': self._get_error_summary(),                               # 错误摘要
+            'deadlift_details': self._get_deadlift_details()                          # 硬拉详情
         }
-        
+
         return result_data
 
     def _get_error_summary(self):

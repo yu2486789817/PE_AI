@@ -15,17 +15,32 @@ import traceback
 import logging
 import time
 import shutil
-import sqlite3
-from database import init_database, insert_exercise_feedback, get_exercise_feedback, get_exercise_feedback_by_id
+from database import (
+    init_database,
+    insert_exercise_feedback,
+    get_exercise_feedback,
+    get_exercise_feedback_by_id,
+    get_student_all_records,
+    get_records_by_homework_student,
+    get_all_records
+)
 from typing import List, Optional
 from datetime import datetime
 
+# ================= 路径配置 =================
+# 获取当前脚本所在目录，确保无论在哪里运行都使用正确的路径
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
+HOMEWORK_DIR = os.path.join(SCRIPT_DIR, "homework")
+
 app = FastAPI(title="AI Gym API", description="健身动作识别后端API")
-# 数据库文件路径
-DB_PATH = "exercise_feedback.db"
+
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 存储临时目录，以便稍后清理（必须在 shutdown_event 之前定义）
+temp_dirs = {}  # 存储临时目录信息，包括创建时间和路径
 
 # 允许跨域请求
 app.add_middleware(
@@ -63,18 +78,29 @@ class VideoProcessor:
     def load_model(self):
         """加载YOLO模型"""
         if self.model is None:
-            try:
-                self.model = YOLO("yolov8n-pose.pt")
-                print("YOLO模型加载成功")
-            except Exception as e:
-                print(f"模型加载失败: {e}")
-                # 尝试从当前目录的models文件夹加载
+            # 模型路径列表，按优先级尝试
+            model_paths = [
+                os.path.join(SCRIPT_DIR, "yolov8n-pose.pt"),  # 脚本目录
+                os.path.join(MODELS_DIR, "yolov8n-pose.pt"),  # models 子目录
+            ]
+
+            for model_path in model_paths:
                 try:
-                    self.model = YOLO(os.path.join("models", "yolov8n-pose.pt"))
-                    print("从models文件夹加载模型成功")
-                except Exception as e2:
-                    print(f"备用模型加载也失败: {e2}")
-                    raise e2
+                    self.model = YOLO(model_path)
+                    print(f"YOLO模型加载成功: {model_path}")
+                    return
+                except Exception as e:
+                    print(f"尝试加载 {model_path} 失败: {e}")
+
+            # 如果本地都没有，尝试自动下载到脚本目录
+            try:
+                print("尝试自动下载 YOLO 模型...")
+                self.model = YOLO("yolov8n-pose.pt")
+                # 下载成功后，模型会保存在当前目录，下次可以直接加载
+                print("YOLO模型自动下载成功")
+            except Exception as e:
+                print(f"模型自动下载失败: {e}")
+                raise e
 
     def create_gym_object(self, session_id: str, pose_type: str, fps: int = 30):
         """创建AIGym对象"""
@@ -201,50 +227,20 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
         })
 
         # 视频编码器设置
-        SKIP_FACTOR = 2
+        SKIP_FACTOR = 1
         output_fps = fps / SKIP_FACTOR
 
-        # 尝试不同的视频编码器
-        fourcc_options = [
-            cv2.VideoWriter_fourcc(*'mp4v'),  # MPEG-4
-            # cv2.VideoWriter_fourcc(*'VP90'),
-            # cv2.VideoWriter_fourcc(*'H264'),
-            cv2.VideoWriter_fourcc(*'XVID'),  # XVID
-            cv2.VideoWriter_fourcc(*'MJPG')  # Motion JPEG
-        ]
+        # 使用 MJPG 编码保存为 AVI（兼容性最好）
+        # 后续可通过 FFmpeg 转换为 H.264 MP4（如果需要）
+        temp_output_path = os.path.join(temp_dir, "temp_output.avi")
+        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+        out = cv2.VideoWriter(temp_output_path, fourcc, output_fps, (width, height), True)
 
-        out = None
-        for fourcc_code in fourcc_options:
-            try:
-                out = cv2.VideoWriter(output_path, fourcc_code, output_fps, (width, height), True)
-                if out.isOpened():
-                    logger.info(f"使用编码器 {fourcc_code} 创建视频写入器成功")
-                    break
-                else:
-                    out = None
-                    logger.warning(f"编码器 {fourcc_code} 创建失败")
-            except Exception as e:
-                logger.warning(f"尝试编码器 {fourcc_code} 时出错: {e}")
-                out = None
-
-        # 如果所有编码器都失败，尝试不使用编码器参数
-        if out is None:
-            try:
-                out = cv2.VideoWriter(output_path, -1, output_fps, (width, height), True)
-                if out.isOpened():
-                    logger.info("使用默认编码器创建视频写入器成功")
-                else:
-                    out = None
-            except Exception as e:
-                logger.error(f"使用默认编码器也失败: {e}")
-                out = None
-
-        if out is None:
-            yield sse_format("error", {"message": "无法创建输出视频文件，请检查视频编码器支持"})
+        if not out.isOpened():
+            yield sse_format("error", {"message": "无法创建输出视频文件"})
             return
 
-        logger.info(f"输出视频文件创建成功: {output_path}")
-        yield sse_format("init", {"message": "输出视频文件创建成功", "output_path": output_path})
+        logger.info(f"临时视频文件创建成功: {temp_output_path}")
 
         # 创建gym对象
         session_id = f"session_{int(time.time() * 1000000) % 1000000}"
@@ -316,6 +312,22 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
         # 确保视频文件正确关闭
         out.release()
         cap.release()
+
+        # 使用 FFmpeg 将 AVI 转换为 H.264 MP4（浏览器兼容）
+        # 如果没有 FFmpeg，则直接使用 AVI 文件
+        import subprocess
+        try:
+            ffmpeg_cmd = [
+                'ffmpeg', '-y', '-i', temp_output_path,
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                '-pix_fmt', 'yuv420p', output_path
+            ]
+            subprocess.run(ffmpeg_cmd, capture_output=True, check=True, timeout=60)
+            logger.info(f"FFmpeg 转换成功: {output_path}")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            logger.warning(f"FFmpeg 转换失败，使用原始 AVI: {e}")
+            # 如果 FFmpeg 失败，直接复制 AVI 文件
+            output_path = temp_output_path
 
         # 如果需要保存到指定位置
         if save_path:
@@ -495,217 +507,6 @@ async def download_processed_video(temp_id: str):
         raise HTTPException(status_code=500, detail="下载视频时出错")
 
 
-def process_video_logic(file_content: bytes, pose_type: str):
-    """处理视频的核心逻辑，供不同接口复用"""
-    session_id = None
-    cap = None
-    out = None
-
-    try:
-        logger.info("开始处理视频上传...")
-
-        # 创建临时目录
-        temp_dir = tempfile.mkdtemp()
-        tmp_file_path = os.path.join(temp_dir, "input_video.mp4")
-
-        # 将文件内容写入临时文件
-        with open(tmp_file_path, "wb") as buffer:
-            buffer.write(file_content)
-
-        logger.info(f"视频已保存到 {tmp_file_path}")
-
-        # 读取视频
-        logger.info("尝试打开视频文件...")
-        logger.info(f"视频文件路径: {tmp_file_path}")
-
-        # 检查文件是否存在
-        if not os.path.exists(tmp_file_path):
-            logger.error(f"视频文件不存在: {tmp_file_path}")
-            raise HTTPException(status_code=400, detail="视频文件未找到")
-
-        # 检查文件大小
-        file_size = os.path.getsize(tmp_file_path)
-        logger.info(f"视频文件大小: {file_size} 字节")
-
-        # 检查文件是否可读
-        if not os.access(tmp_file_path, os.R_OK):
-            logger.error(f"视频文件不可读: {tmp_file_path}")
-            raise HTTPException(status_code=400, detail="视频文件不可读")
-
-        # 使用默认方式打开视频
-        cap = cv2.VideoCapture(tmp_file_path)
-
-        if not cap.isOpened():
-            logger.error("无法打开视频文件")
-            raise HTTPException(status_code=400, detail="无法打开视频文件")
-
-        logger.info("视频文件打开成功")
-        # 记录使用的后端
-        backend_name = cap.getBackendName()
-        logger.info(f"使用的后端名称: {backend_name}")
-
-        # 获取视频信息
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        if fps == 0:  # 如果无法获取FPS，使用默认值
-            fps = 30
-
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        logger.info(f"视频信息: FPS={fps}, 宽度={width}, 高度={height}, 总帧数={frame_count}")
-
-        # 创建输出视频文件，保持原始FPS不变
-        output_path = os.path.join(temp_dir, "output_video.mp4")
-
-        # 视频编码器设置
-        SKIP_FACTOR = 2
-        output_fps = fps / SKIP_FACTOR
-
-        # 尝试不同的视频编码器
-        fourcc_options = [
-            cv2.VideoWriter_fourcc(*'mp4v'),  # MPEG-4
-            # cv2.VideoWriter_fourcc(*'VP90'),
-            # cv2.VideoWriter_fourcc(*'H264'),
-            cv2.VideoWriter_fourcc(*'XVID'),  # XVID
-            cv2.VideoWriter_fourcc(*'MJPG')  # Motion JPEG
-        ]
-
-        out = None
-        for fourcc_code in fourcc_options:
-            try:
-                out = cv2.VideoWriter(output_path, fourcc_code, output_fps, (width, height), True)
-                if out.isOpened():
-                    logger.info(f"使用编码器 {fourcc_code} 创建视频写入器成功")
-                    break
-                else:
-                    out = None
-                    logger.warning(f"编码器 {fourcc_code} 创建失败")
-            except Exception as e:
-                logger.warning(f"尝试编码器 {fourcc_code} 时出错: {e}")
-                out = None
-
-        # 如果所有编码器都失败，尝试不使用编码器参数
-        if out is None:
-            try:
-                out = cv2.VideoWriter(output_path, -1, output_fps, (width, height), True)
-                if out.isOpened():
-                    logger.info("使用默认编码器创建视频写入器成功")
-                else:
-                    out = None
-            except Exception as e:
-                logger.error(f"使用默认编码器也失败: {e}")
-                out = None
-
-        if out is None:
-            yield sse_format("error", {"message": "无法创建输出视频文件，请检查视频编码器支持"})
-            return
-
-        if not out.isOpened():
-            raise HTTPException(status_code=500, detail="无法创建输出视频文件")
-        logger.info(f"输出视频文件创建成功: {output_path}")
-
-        # 创建gym对象
-        # session_id保证并行处理和释放资源
-        session_id = f"session_{int(time.time() * 1000000) % 1000000}"  # 使用时间戳生成唯一ID
-        logger.info(f"创建gym对象，session_id: {session_id}")
-        gym_object = video_processor.create_gym_object(
-            session_id, pose_type, fps
-        )
-        processed_frame_count = 0
-        max_count = 0
-        counts_data = []
-
-        # 处理每一帧
-        logger.info("开始逐帧处理视频...")
-        frame_index = 0
-
-        while True:
-            success, frame = cap.read()
-            if not success:
-                logger.info("视频读取完成")
-                break
-
-            # 跳帧处理，加快处理速度
-            if frame_index % SKIP_FACTOR != 0:
-                frame_index += 1
-                continue
-
-            try:
-                processed_frame, count = gym_object.monitor(frame)
-                if processed_frame is not None:
-                    # 写入处理后的帧到输出视频
-                    out.write(processed_frame)
-
-                    counts_data.append({
-                        "frame": processed_frame_count,
-                        "time": processed_frame_count / fps if fps > 0 else 0,
-                        "count": count
-                    })
-                    max_count = max(max_count, count)
-                    processed_frame_count += 1
-
-                frame_index += 1
-
-                # 每处理10帧记录一次进度
-                if frame_index % 10 == 0:
-                    logger.debug(f"已处理 {frame_index} 帧")
-
-            except Exception as e:
-                error_msg = f"处理第 {frame_index} 帧时出错: {str(e)}"
-                logger.error(error_msg)
-                logger.error(traceback.format_exc())
-                continue
-
-        logger.info(f"视频处理完成，共处理 {processed_frame_count} 帧")
-
-        # 确保视频文件正确关闭
-        out.release()
-        cap.release()
-
-        # 重新打开输出视频文件以确保其完整性
-        test_cap = cv2.VideoCapture(output_path)
-        if not test_cap.isOpened():
-            raise HTTPException(status_code=500, detail="处理后的视频文件无法打开")
-        test_cap.release()
-
-        # 读取处理后的视频文件
-        with open(output_path, "rb") as video_file:
-            processed_video = video_file.read()
-
-        # 返回处理结果
-        return {
-            "processed_video": processed_video,  # 二进制数据视频
-            "max_count": max_count,
-            "processed_frame_count": processed_frame_count,
-            "total_time": frame_index / fps if fps > 0 else 0,  # 使用原始帧数计算总时间
-            "temp_dir": temp_dir,
-            "output_path": output_path
-        }
-
-    except Exception as e:
-        error_msg = f"处理视频时出错: {str(e)}"
-        logger.error(error_msg)
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=error_msg)
-
-    finally:
-        # 释放资源
-        try:
-            if cap is not None:
-                cap.release()
-            if out is not None:
-                out.release()
-        except Exception as e:
-            logger.error(f"释放视频资源时出错: {e}")
-
-        # 清理gym对象
-        try:
-            if session_id is not None and session_id in video_processor.gym_objects:
-                del video_processor.gym_objects[session_id]
-        except Exception as e:
-            logger.error(f"清理gym对象时出错: {e}")
-
-
 @app.post("/process_video")
 async def process_video(file: UploadFile = File(...), pose_type: str = "pushup"):
     """流式处理视频并返回处理后的完整视频"""
@@ -730,8 +531,8 @@ async def process_and_save_video(
     file_content = await file.read()
     logger.info(f"视频文件读取完成，大小: {len(file_content)} 字节")
 
-    # 创建保存目录和路径
-    save_dir = os.path.join("homework", homework_id, student_id)
+    # 创建保存目录和路径（使用绝对路径）
+    save_dir = os.path.join(HOMEWORK_DIR, homework_id, student_id)
     save_path = os.path.join(save_dir, "processed_video.mp4")
 
     # 添加日志信息
@@ -758,7 +559,7 @@ async def get_processed_video(
         download: bool = Query(False, description="是否作为附件下载")
 ):
     """获取已处理的视频文件 - 支持下载和流式预览"""
-    video_path = os.path.join("homework", homework_id, student_id, "processed_video.mp4")
+    video_path = os.path.join(HOMEWORK_DIR, homework_id, student_id, "processed_video.mp4")
 
     if not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="视频文件不存在")
@@ -782,8 +583,12 @@ async def get_processed_video(
         try:
             logger.info(f"开始流式传输视频: {video_path}")
 
-            # 打开视频文件
-            cap = cv2.VideoCapture(video_path)
+            # Windows 上优先使用 MSMF 后端，避免 GStreamer 插件问题
+            cap = cv2.VideoCapture(video_path, cv2.CAP_MSMF)
+            if not cap.isOpened():
+                # 如果 MSMF 失败，尝试默认后端
+                cap.release()
+                cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
                 # 发送错误信息
                 yield sse_format("error", {"message": "无法打开视频文件"})
@@ -886,7 +691,7 @@ async def get_processed_video(
 @app.delete("/delete_homework")
 async def delete_homework(homework_id: str = Query(..., description="作业ID")):
     """删除指定作业ID下的所有视频文件"""
-    homework_dir = os.path.join("homework", homework_id)
+    homework_dir = os.path.join(HOMEWORK_DIR, homework_id)
 
     if not os.path.exists(homework_dir):
         raise HTTPException(status_code=404, detail=f"作业ID {homework_id} 不存在")
@@ -939,23 +744,10 @@ async def query_records(
             return [result]
         else:
             # 查询该学生该作业的所有记录
-            conn = sqlite3.connect(DB_PATH)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT * FROM exercise_feedback 
-                WHERE homework_id = ? AND student_id = ?
-                ORDER BY uploaded_at DESC
-            """, (homework_id, student_id))
-
-            rows = cursor.fetchall()
-            conn.close()
-
-            if not rows:
+            results = get_records_by_homework_student(homework_id, student_id)
+            if not results:
                 raise HTTPException(status_code=404, detail="未找到相关记录")
-
-            return [dict(row) for row in rows]
+            return results
     except Exception as e:
         logger.error(f"查询记录时出错: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -965,22 +757,13 @@ async def query_records(
 async def query_all_records():
     """查询所有反馈记录"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM exercise_feedback ORDER BY uploaded_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        return get_all_records()
     except Exception as e:
         logger.error(f"查询所有记录时出错: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 存储临时目录，以便稍后清理
-temp_dirs = {}  # 存储临时目录信息，包括创建时间和路径
+# temp_dirs 已在文件顶部定义
 
 
 def cleanup_temp_dirs():
@@ -1005,18 +788,10 @@ def cleanup_temp_dirs():
 async def get_record_details(record_id: int):
     """获取指定记录的详细信息"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM exercise_feedback WHERE id = ?", (record_id,))
-        record = cursor.fetchone()
-        conn.close()
-
+        record = get_exercise_feedback_by_id(record_id)
         if not record:
             raise HTTPException(status_code=404, detail="记录不存在")
-
-        return dict(record)
+        return record
     except Exception as e:
         logger.error(f"获取记录详情时出错: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1029,63 +804,22 @@ async def get_record_details_by_homework_student(
 ):
     """通过作业ID和学生ID获取记录的详细信息"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT * FROM exercise_feedback 
-            WHERE homework_id = ? AND student_id = ?
-            ORDER BY uploaded_at DESC
-        """, (homework_id, student_id))
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
+        results = get_records_by_homework_student(homework_id, student_id)
+        if not results:
             raise HTTPException(status_code=404, detail="未找到相关记录")
-
-        return [dict(row) for row in rows]
+        return results
     except Exception as e:
         logger.error(f"获取记录详情时出错: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/student/all-records/{student_id}")
-async def get_student_all_records(student_id: str):
-    """获取指定学生的所有记录"""
+async def api_get_student_all_records(student_id: str):
+    """获取指定学生的所有记录（供 AIChat 服务调用）"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT * FROM exercise_feedback 
-            WHERE student_id = ?
-            ORDER BY uploaded_at DESC
-        """, (student_id,))
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
-            raise HTTPException(status_code=404, detail="未找到该学生记录")
-
-        # 转换为字典列表
-        records = []
-        for row in rows:
-            record = dict(row)
-            # 解析JSON字段
-            if record.get('feedback_json'):
-                try:
-                    record['feedback_data'] = json.loads(record['feedback_json'])
-                except json.JSONDecodeError:
-                    record['feedback_data'] = {}
-            else:
-                record['feedback_data'] = {}
-            records.append(record)
-
-        return records
+        records = get_student_all_records(student_id)
+        # 返回空列表而不是 404，因为新学生没有记录是正常情况
+        return records if records else []
     except Exception as e:
         logger.error(f"获取学生记录时出错: {e}")
         raise HTTPException(status_code=500, detail=str(e))

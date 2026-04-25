@@ -1,448 +1,275 @@
-# AI聊天应用
+# AIChat - AI 智能聊天与报告服务
 
-一个基于FastAPI的AI聊天应用后端，支持多用户会话管理和历史记录持久化。
+## 模块概述
 
-## 技术栈
+AIChat 是体育教学平台的 AI 智能助手服务，提供两个核心功能：
+1. **AI 聊天助手**：为学生和教师提供个性化的运动指导和教学建议
+2. **AI 分析报告**：基于学生运动数据生成智能分析报告
 
-- 后端：Python + FastAPI
-- 数据库：SQLite
-- 前端：HTML + JavaScript
-- AI模型：支持多种大语言模型（通义千问、文心一言、Moonshot）
+**技术方案**：本地部署 Qwen2.5-7B-Instruct + LoRA 微调（体育教学领域）
 
-## 最近更新
+## 系统架构
 
-### 修复的错误
-
-1. **CORS跨域问题**：
-   - 统一使用FastAPI框架，移除Flask相关代码
-   - 正确配置CORS中间件以支持跨域请求
-
-2. **异步请求处理问题**：
-   - 修复了在FastAPI中处理请求体时缺少`await`关键字的问题
-   - 所有异步函数均已正确实现
-
-3. **数据库表结构问题**：
-   - 修复了`ai_analysis_reports`表缺少`student_info`列的问题
-   - 更新了数据库初始化脚本以支持新的表结构
-
-## 接口文档
-
-### AI分析报告接口
-
-#### 1. 生成智能分析报告
-
-**URL**: `POST /api/analysis/generate`
-
-**功能**: 根据学生运动数据生成智能分析报告
-
-**参数** (JSON):
-- `student_id` (string): 学生ID
-- `analysis_type` (string): 分析类型，可选值为"homework_feedback"（作业反馈）或"personalized_tips"（个性化建议）
-- `homework_id` (string, 可选): 作业ID，当analysis_type为"homework_feedback"时必需
-- `student_info` (object, 可选): 学生个人信息，当analysis_type为"personalized_tips"时可提供
-- `query` (string, 可选): 用户的具体查询问题
-
-**示例请求**:
 ```
-POST /api/analysis/generate
-Content-Type: application/json
-
-{
-  "student_id": "stu123",
-  "analysis_type": "homework_feedback",
-  "homework_id": "hw456"
-}
+┌─────────────────────────────────────────────────────────────────────┐
+│                        AIChat 架构                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────┐    ┌─────────────────────────────────────────────┐│
+│  │   FastAPI   │    │              核心服务层                      ││
+│  │   API 层    │───▶│  ┌─────────────┐  ┌─────────────────────┐  ││
+│  │   (5000)    │    │  │ ChatManager │  │  ReportGenerator    │  ││
+│  └─────────────┘    │  │  会话管理   │  │    报告生成         │  ││
+│                     │  └─────────────┘  └─────────────────────┘  ││
+│                     └─────────────────────────────────────────────┘│
+│                                │                                    │
+│                                ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                    本地 LLM 推理层                               ││
+│  │                                                                  ││
+│  │   ┌────────────────────────────────────────────────────────┐    ││
+│  │   │              Qwen2.5-7B-PE-Sports                        │    ││
+│  │   │         (微调后的体育教学专用模型)                        │    ││
+│  │   │                                                          │    ││
+│  │   │   Base: Qwen2.5-7B-Instruct                              │    ││
+│  │   │   + LoRA Adapter (体育教学领域微调)                       │    ││
+│  │   └────────────────────────────────────────────────────────┘    ││
+│  │                                                                  ││
+│  │   推理后端: Transformers (4-bit 量化)                           ││
+│  │   显存占用: ~5GB                                                 ││
+│  └─────────────────────────────────────────────────────────────────┘│
+│                                │                                    │
+│                                ▼                                    │
+│  ┌─────────────┐              ┌─────────────┐                       │
+│  │   SQLite    │              │  Yolo_backend│                       │
+│  │   数据库    │◀────────────▶│  (数据源)   │                       │
+│  └─────────────┘              └─────────────┘                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**成功响应**:
-``json
-{
-  "success": true,
-  "data": {
-    "report": "分析报告内容...",
-    "analysis_type": "homework_feedback"
-  }
-}
+## 快速开始
+
+### 1. 环境准备
+
+```bash
+# 激活 conda 环境
+conda activate pe_ai
+
+# 进入 AIChat 目录
+cd Code/AIChat
 ```
 
-#### 2. 查询已生成的报告
+### 2. 启动服务
 
-**URL**: `GET /api/analysis/query`
-
-**功能**: 查询已生成的分析报告
-
-**参数** (query string):
-- `student_id` (string): 学生ID
-- `homework_id` (string, 可选): 作业ID
-- `analysis_type` (string, 可选): 分析类型
-
-**示例请求**:
-```
-GET /api/analysis/query?student_id=stu123&homework_id=hw456&analysis_type=homework_feedback
+```bash
+python main.py
 ```
 
-#### 3. 获取最近的分析记录
+服务将在 `http://localhost:5000` 启动。
 
-**URL**: `GET /api/analysis/recent`
+### 3. 环境变量（可选）
 
-**功能**: 获取最近生成的分析报告记录
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `MODEL_PATH` | 自动检测 | 模型路径（优先使用微调模型） |
+| `YOLO_BASE_URL` | http://localhost:8000 | Yolo_backend 服务地址 |
+| `LOAD_IN_4BIT` | true | 推理时使用 4-bit 量化 |
+| `LOAD_IN_8BIT` | false | 推理时使用 8-bit 量化 |
+| `MAX_TOKENS` | 2048 | 最大生成 token 数 |
+| `TEMPERATURE` | 0.7 | 生成温度 |
 
-**参数** (query string):
-- `student_id` (string, 可选): 学生ID
-- `limit` (int, 可选): 返回记录数量限制，默认为10
+## 模型说明
 
-**示例请求**:
-```
-GET /api/analysis/recent?student_id=stu123&limit=5
-```
+### 模型自动选择
 
-### 1. 获取用户会话列表
+服务启动时会自动检测并选择模型：
 
-**URL**: `GET /api/sessions`
+1. **优先**：`./models/Qwen2.5-7B-PE-Sports`（微调后的模型）
+2. **回退**：`./models/Qwen/Qwen2___5-7B-Instruct`（基础模型）
 
-**功能**: 获取指定用户的所有会话列表
+### 微调模型特点
 
-**参数**:
-- `user_id` (query string): 用户ID
+微调后的模型针对体育教学场景优化：
 
-**示例请求**:
-```
-GET /api/sessions?user_id=user123
-```
+| 场景 | 能力 |
+|------|------|
+| 学生教练 | 动作纠正、训练建议、运动知识科普 |
+| 教师助理 | 班级分析、教学方案设计、学生评估 |
+| 报告生成 | 运动数据解读、个性化建议生成 |
 
-**成功响应**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "session_id": 1,
-      "title": "新对话-2023-10-20 14:30",
-      "model": "Qwen"
-    },
-    {
-      "session_id": 2,
-      "title": "健身计划讨论",
-      "model": "ERNIE"
-    }
-  ]
-}
-```
+## 核心组件
 
-### 2. 为用户创建新会话
+### 1. chat_module.py - 聊天核心模块
 
-**URL**: `POST /api/sessions`
+**LocalLLM 类：**
+- 本地模型加载与推理
+- 支持 4-bit/8-bit 量化
+- ChatML 提示词格式
 
-**功能**: 为指定用户创建一个新的会话
+**ChatManager 类：**
+- 会话生命周期管理
+- 对话历史持久化
+- 系统提示词管理
 
-**参数** (JSON):
-- `user_id` (string): 用户ID
-- `model` (string, 可选): 使用的AI模型，默认为"Qwen"
+### 2. report_module.py - 报告生成模块
 
-**示例请求**:
+**报告类型：**
+| 类型 | 说明 |
+|------|------|
+| homework_feedback | 作业反馈分析 |
+| personalized_tips | 个性化训练建议 |
+
+### 3. database.py - 数据库模块
+
+**SQLite 表结构：**
+- `sessions` - 会话记录
+- `messages` - 消息历史
+- `ai_analysis_reports` - 分析报告
+
+## API 接口
+
+### 聊天接口
+
+#### 创建会话
 ```
 POST /api/sessions
 Content-Type: application/json
 
 {
-  "user_id": "user123",
-  "model": "Qwen"
+  "user_id": "student001",
+  "role": "student"  // student 或 teacher
 }
 ```
 
-**成功响应**:
-```json
-{
-  "success": true,
-  "data": {
-    "session_id": 1,
-    "session": {
-      "session_id": 1,
-      "messages": [
-        {
-          "role": "system",
-          "content": "你是一个体育健身数智化教学平台的AI助手..."
-        },
-        {
-          "role": "assistant",
-          "content": "🏋️‍♂️ 欢迎使用体育健身数智化教学平台！..."
-        }
-      ],
-      "model": "Qwen",
-      "title": "新对话-2023-10-20 14:30"
-    },
-    "welcome_message": {
-      "role": "assistant",
-      "content": "🏋️‍♂️ 欢迎使用体育健身数智化教学平台！..."
-    }
-  }
-}
+#### 发送消息
 ```
-
-### 3. 获取用户的最新会话
-
-**URL**: `GET /api/sessions/user/<user_id>`
-
-**功能**: 获取指定用户的最新会话
-
-**参数**:
-- `user_id` (URL参数): 用户ID
-
-**示例请求**:
-```
-GET /api/sessions/user/user123
-```
-
-**成功响应**:
-```json
-{
-  "success": true,
-  "data": {
-    "session_id": 1,
-    "messages": [
-      {
-        "role": "system",
-        "content": "你是一个体育健身数智化教学平台的AI助手..."
-      },
-      {
-        "role": "assistant",
-        "content": "🏋️‍♂️ 欢迎使用体育健身数智化教学平台！..."
-      }
-    ],
-    "model": "Qwen",
-    "title": "新对话-2023-10-20 14:30"
-  }
-}
-```
-
-**无会话时的响应**:
-```json
-{
-  "success": false,
-  "data": null
-}
-```
-
-### 4. 获取指定会话详情
-
-**URL**: `GET /api/sessions/<session_id>`
-
-**功能**: 获取指定会话的详细信息，包括所有历史消息
-
-**参数**:
-- `session_id` (URL参数): 会话ID
-
-**示例请求**:
-```
-GET /api/sessions/1
-```
-
-**成功响应**:
-```json
-{
-  "success": true,
-  "data": {
-    "session_id": 1,
-    "messages": [
-      {
-        "role": "system",
-        "content": "你是一个体育健身数智化教学平台的AI助手...",
-        "model": "Qwen"
-      },
-      {
-        "role": "assistant",
-        "content": "🏋️‍♂️ 欢迎使用体育健身数智化教学平台！...",
-        "model": "Qwen"
-      }
-    ],
-    "model": "Qwen",
-    "title": "新对话-2023-10-20 14:30"
-  }
-}
-```
-
-### 5. 删除会话
-
-**URL**: `DELETE /api/sessions/<session_id>`
-
-**功能**: 删除指定的会话及其所有消息
-
-**参数**:
-- `session_id` (URL参数): 会话ID
-
-**示例请求**:
-```
-DELETE /api/sessions/1
-```
-
-**成功响应**:
-```json
-{
-  "success": true,
-  "message": "会话已删除"
-}
-```
-
-### 6. 发送消息
-
-**URL**: `POST /api/sessions/<session_id>/messages`
-
-**功能**: 向指定会话发送消息并获取AI回复
-
-**参数** (JSON):
-- `session_id` (URL参数): 会话ID
-- `message` (string): 用户发送的消息内容
-- `model` (string, 可选): 指定使用的AI模型，如果不指定则使用会话默认模型
-
-**示例请求**:
-```
-POST /api/sessions/1/messages
+POST /api/sessions/{session_id}/messages
 Content-Type: application/json
 
 {
-  "message": "我想制定一个健身计划",
-  "model": "ERNIE"
+  "message": "我的俯卧撑正确率不高，怎么改进？"
 }
 ```
 
-**成功响应**:
-```json
+#### 获取会话列表
+```
+GET /api/sessions?user_id=student001
+```
+
+#### 删除会话
+```
+DELETE /api/sessions/{session_id}
+```
+
+### 报告接口
+
+#### 生成分析报告
+```
+POST /api/analysis/generate
+Content-Type: application/json
+
 {
-  "success": true,
-  "data": {
-    "session": {
-      "session_id": 1,
-      "messages": [
-        {
-          "role": "system",
-          "content": "你是一个体育健身数智化教学平台的AI助手...",
-          "model": "Qwen"
-        },
-        {
-          "role": "assistant",
-          "content": "🏋️‍♂️ 欢迎使用体育健身数智化教学平台！...",
-          "model": "Qwen"
-        },
-        {
-          "role": "user",
-          "content": "我想制定一个健身计划",
-          "model": "ERNIE"
-        },
-        {
-          "role": "assistant",
-          "content": "好的，我很乐意帮您制定健身计划。首先，请告诉我您的身高、体重和健身目标。",
-          "model": "ERNIE"
-        }
-      ],
-      "model": "Qwen",
-      "title": "我想制定一个健身计划"
-    },
-    "response": "好的，我很乐意帮您制定健身计划。首先，请告诉我您的身高、体重和健身目标。"
-  }
+  "student_id": "student001",
+  "analysis_type": "homework_feedback",
+  "homework_id": "hw001"
 }
 ```
 
-### 7. 清空会话消息
-
-**URL**: `POST /api/sessions/<session_id>/clear`
-
-**功能**: 清空指定会话的所有消息，但保留会话本身
-
-**参数**:
-- `session_id` (URL参数): 会话ID
-
-**示例请求**:
+#### 查询报告
 ```
-POST /api/sessions/1/clear
+GET /api/analysis/query?student_id=student001
 ```
-
-**成功响应**:
-```json
-{
-  "success": true,
-  "message": "会话已清空"
-}
-```
-
-### 8. 导出会话
-
-**URL**: `GET /api/sessions/<session_id>/export`
-
-**功能**: 将指定会话导出为Markdown文件
-
-**参数**:
-- `session_id` (URL参数): 会话ID
-
-**示例请求**:
-```
-GET /api/sessions/1/export
-```
-
-**成功响应**:
-- 返回一个Markdown文件下载
-
-### 9. 获取支持的模型列表
-
-**URL**: `GET /api/models`
-
-**功能**: 获取系统支持的所有AI模型列表
-
-**示例请求**:
-```
-GET /api/models
-```
-
-**成功响应**:
-```json
-{
-  "success": true,
-  "data": [
-    "Qwen",
-    "ERNIE",
-    "Moonshot"
-  ]
-}
-```
-
-## 使用说明
-
-1. 启动后端服务:
-   ```bash
-   python backend.py
-   ```
-
-2. 在浏览器中打开 `test_frontend.html` 进行测试
-
-3. 输入用户ID，点击"加载会话"开始使用
 
 ## 数据库设计
 
-### 会话表 (sessions)
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| id | INTEGER PRIMARY KEY AUTOINCREMENT | 会话ID，自增主键 |
-| user_id | TEXT NOT NULL | 用户ID |
-| title | TEXT NOT NULL | 会话标题 |
-| model | TEXT | 默认使用的AI模型（可选） |
+### sessions 表
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| id | INTEGER | 主键 |
+| user_id | TEXT | 用户ID |
+| title | TEXT | 会话标题 |
+| model | TEXT | 使用的模型 |
+| role | TEXT | 用户角色 |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
 
-### 消息表 (messages)
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| id | INTEGER PRIMARY KEY AUTOINCREMENT | 消息ID，自增主键 |
-| session_id | INTEGER NOT NULL | 会话ID，外键关联sessions表 |
-| role | TEXT NOT NULL | 消息角色 (system/user/assistant) |
-| content | TEXT NOT NULL | 消息内容 |
-| model | TEXT | 使用的AI模型（可选） |
+### messages 表
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| id | INTEGER | 主键 |
+| session_id | INTEGER | 会话ID |
+| role | TEXT | 角色 |
+| content | TEXT | 消息内容 |
 | timestamp | TIMESTAMP | 时间戳 |
+
+### ai_analysis_reports 表
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| id | INTEGER | 主键 |
+| homework_id | TEXT | 作业ID |
+| student_id | TEXT | 学生ID |
+| analysis_type | TEXT | 分析类型 |
+| report_content | TEXT | 报告内容 |
+| raw_data | TEXT | 原始数据 |
+| created_at | TIMESTAMP | 创建时间 |
+
+## 与 Yolo_backend 数据交互
+
+AIChat 从 Yolo_backend 获取学生运动数据：
+
+```
+GET http://localhost:8000/api/student/all-records/{student_id}
+```
+
+**数据流程：**
+1. 接收报告生成请求
+2. 从 Yolo_backend 获取运动数据
+3. 构建提示词（System Prompt + 运动数据）
+4. 调用本地 LLM 生成报告
+5. 保存报告到 SQLite
+6. 返回结果
+
+## 错误码
+
+| HTTP 状态码 | 错误信息 | 说明 |
+|------------|---------|------|
+| 200 | - | 成功 |
+| 400 | 用户ID不能为空 | 缺少 user_id |
+| 404 | 会话不存在 | session_id 无效 |
+| 500 | 模型加载失败 | LLM 加载异常 |
+
+## 微调指南
+
+详细的微调流程请参考 [finetune/README.md](finetune/README.md)。
+
+### 微调流程概览
+
+```
+1. 下载基础模型 → python finetune/download_model.py
+2. 生成训练数据 → python finetune/generate_training_data.py
+3. 运行 LoRA 微调 → python finetune/finetune_lora.py
+4. 合并 LoRA 权重 → python finetune/merge_lora.py
+5. 重启服务 → python main.py（自动使用微调模型）
+```
 
 ## 注意事项
 
-1. 数据库会在首次启动时自动创建
-2. 每个用户可以拥有多个会话
-3. 会话和消息ID均为自增整数
-4. 用户通过用户ID管理自己的会话
-5. 会话与模型不强绑定，同一会话中可以使用不同模型进行对话
-6. 如果发送消息时未指定模型，则使用会话创建时指定的默认模型
-7. 前端应在用户首次访问时显式调用创建会话接口，而不是依赖后端自动创建
+1. **显存需求**：4-bit 量化推理约需 5GB 显存
+2. **首次启动**：模型加载需要 30-60 秒
+3. **并发处理**：建议使用队列处理并发请求
+4. **模型版本**：推荐 Qwen2.5 系列，中文能力强
+
+## 依赖说明
+
+详见 [requirements.txt](requirements.txt)
+
+核心依赖：
+- `transformers` - 模型加载与推理
+- `peft` - LoRA 适配器支持
+- `bitsandbytes` - 量化支持
+- `fastapi` - Web 框架
+- `modelscope` - 模型下载

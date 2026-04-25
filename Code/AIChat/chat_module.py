@@ -1,263 +1,418 @@
+"""
+chat_module.py - AI 聊天核心模块
+
+功能：
+1. 本地 LLM 模型加载与推理（Qwen2.5-3B）
+2. 会话管理（创建、查询、删除、消息存储）
+3. 会话导出
+
+模型配置：
+- 微调模型: ./models/Qwen2.5-3B-PE-Sports
+- 量化: 4-bit (默认)
+"""
+
 import os
 import time
-import openai
-from typing import Dict, List
-import tempfile
-import json
-from flask import Flask, request, jsonify, send_file
 import sqlite3
-from datetime import datetime
-from database import init_db
+import tempfile
+import logging
+from typing import Dict, List, Optional
+from database import init_db, DB_PATH
 
-# ================= 配置区域 =================
-# 模型配置
-MODEL_CONFIG = {
-    # 用os库优先从环境变量读取，否则使用默认值
-    # 通义千问
-    "Qwen": {
-        "api_key": os.getenv("QWEN_API_KEY", "sk-667eb4d069424ecbbd24c19b44fc5f32"),
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model_name": "qwen-turbo"
-    },
-    # 文心一言
-    "ERNIE": {
-        "api_key": os.getenv("ERNIE_API_KEY",
-                             "bce-v3/ALTAK-6nS6ATIr9PUWSOnZWjAn5/fcccaab611188a339246748a13c803c99fe64caf"),
-        "base_url": "https://qianfan.baidubce.com/v2",
-        "model_name": "ernie-4.0-turbo-8k"
-    },
-    # Moonshot
-    "Moonshot": {
-        "api_key": os.getenv("MOONSHOT_API_KEY", "sk-CoXsoYPoiK9SxwLb58PZiWw3KqObnMDLoo3Etwnrd5sMWzMR"),
-        "base_url": "https://api.moonshot.cn/v1",
-        "model_name": "moonshot-v1-8k"
-    }
-}
+# ================= 日志配置 =================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ================= 路径配置 =================
+# 获取当前脚本所在目录，确保无论在哪里运行都使用正确的路径
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ================= 模型配置 =================
+# 只使用微调模型
+MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "100"))  # 限制输出长度，加快推理
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
+LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "true").lower() == "true"
+LOAD_IN_8BIT = os.getenv("LOAD_IN_8BIT", "false").lower() == "true"
+USE_CPU_OFFLOAD = os.getenv("USE_CPU_OFFLOAD", "false").lower() == "true"
+MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", "1024"))  # 减少输入长度
 
 # ================= 系统提示词 =================
 SYSTEM_PROMPTS = {
-    "student_coach": """
-    你是一个高校体育教学平台的“私人教练AI”。
-    用户是一名学生。
-    以下是该学生最近的运动表现数据（可能包含姿势准确率、练习次数、运动类型等）：
-    {context}
-    
-    你的主要职责：
-    1. 基于上述数据，主动指出该学生的运动短板，并提供针对性的动作纠偏建议。
-    2. 解答体育训练、动作规范、营养补充等相关问题。
-    3. 鼓励学生坚持锻炼，培养良好的运动习惯。
-    
-    回答要求：
-    - 使用亲切、专业、有科学依据的语言风格。
-    - 如果数据为空，请引导学生先去完成体育作业。
-    - 适当使用表情符号让交流更生动。
-    """,
-    "teacher_assistant": """
-    你是一个高校体育教学平台的“教学助理AI”。
-    用户是一名体育教师。
-    
-    你的主要职责：
-    1. 辅助分析全班体质趋势、识别动作错误率高的普遍问题。
-    2. 提供教学方案设计建议和课程优化建议。
-    3. 协助进行教学数据的深度解析。
-    
-    回答要求：
-    - 专业、严谨、逻辑清晰。
-    - 突出数据导向的教学建议。
-    - 遇到不确定的问题，如平台系统操作，请指引老师查看说明文档。
-    """
+    "student_coach": """你是大学体育平台的AI私教。学生数据：{context}
+
+回答要求：
+- 简洁专业，不超过80字
+- 直接回答问题，不要废话
+- 针对学生具体情况给出建议
+""",
+
+    "teacher_assistant": """你是大学体育平台的AI教学助理。
+
+回答要求：
+- 专业简洁，不超过100字
+- 直接回答问题，不要废话
+- 提供具体数据或建议
+"""
 }
 
 
-# ================= 核心功能 =================
-class ChatManager:
+# ================= 本地 LLM 类 =================
+
+class LocalLLM:
     """
-    对话会话管理类:
-    1.创建和管理多个对话会话
-    2.实现对话记忆（将文本储存到数据库）
-    3.管理当前活动会话
+    本地 LLM 管理类，使用 Transformers 后端。
+
+    特性：
+    - 4-bit/8-bit 量化支持
+    - 自动设备映射
+    - ChatML 提示词格式
     """
+
+    _instance = None
+    _model = None
+    _tokenizer = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        # 初始化数据库
+        if self._model is not None:
+            return
+        self._load_model()
+
+    def _load_model(self):
+        """加载本地模型。"""
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+        print(f"Loading local model: {MODEL_PATH}")
+        print(f"Quantization: 4-bit={LOAD_IN_4BIT}, 8-bit={LOAD_IN_8BIT}, CPU_offload={USE_CPU_OFFLOAD}")
+
+        # 加载 tokenizer
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_PATH, trust_remote_code=True, use_fast=False
+        )
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        # 配置量化
+        quantization_config = None
+        if LOAD_IN_4BIT:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True
+            )
+        elif LOAD_IN_8BIT:
+            quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+
+        # 加载模型
+        model_kwargs = {
+            "pretrained_model_name_or_path": MODEL_PATH,
+            "trust_remote_code": True,
+        }
+
+        # 设备映射策略
+        if USE_CPU_OFFLOAD:
+            # CPU 卸载模式：部分层放到 CPU，降低显存占用
+            model_kwargs["device_map"] = "auto"
+            model_kwargs["max_memory"] = {0: "6GB", "cpu": "8GB"}  # 限制 GPU 显存使用
+        else:
+            model_kwargs["device_map"] = "auto"
+
+        if quantization_config:
+            model_kwargs["quantization_config"] = quantization_config
+        else:
+            model_kwargs["torch_dtype"] = torch.float16
+
+        self._model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
+
+        # 尝试启用 BetterTransformer 加速（Windows 兼容）
+        try:
+            self._model = self._model.to_bettertransformer()
+            logger.info("BetterTransformer 加速已启用")
+        except Exception as e:
+            logger.warning(f"BetterTransformer 不可用: {e}")
+
+        self._model.eval()
+
+        # 打印模型信息
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            allocated = torch.cuda.memory_allocated(0) / 1024**3
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(f"GPU Memory: {gpu_memory:.1f} GB total, {allocated:.1f} GB used")
+
+        print("Model loaded successfully")
+
+    def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
+        """生成回复。"""
+        import torch
+        import time
+
+        start_time = time.time()
+        max_tokens = max_tokens or MAX_TOKENS
+        temperature = temperature or TEMPERATURE
+
+        prompt = self._build_prompt(messages)
+        t1 = time.time()
+
+        # 截断输入，避免过长导致显存溢出
+        inputs = self._tokenizer(
+            prompt,
+            return_tensors="pt",
+            return_attention_mask=True,
+            truncation=True,
+            max_length=MAX_INPUT_LENGTH
+        )
+        inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
+
+        t2 = time.time()
+        logger.info(f"[性能] Tokenize 耗时: {t2-t1:.2f}s, 输入长度: {inputs['input_ids'].shape[1]}")
+
+        # 推理前清理缓存
+        torch.cuda.empty_cache()
+
+        with torch.no_grad():
+            outputs = self._model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                do_sample=False,  # 贪婪解码，更快
+                pad_token_id=self._tokenizer.pad_token_id,
+                eos_token_id=self._tokenizer.eos_token_id,
+                repetition_penalty=1.05,
+                use_cache=True
+            )
+
+        t3 = time.time()
+        logger.info(f"[性能] 模型推理耗时: {t3-t2:.2f}s, 生成 token 数: {outputs.shape[1] - inputs['input_ids'].shape[1]}")
+
+        new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+        response = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+        # 推理后清理缓存
+        torch.cuda.empty_cache()
+
+        total_time = time.time() - start_time
+        logger.info(f"[性能] predict 总耗时: {total_time:.2f}s")
+
+        return response.strip()
+
+    def _build_prompt(self, messages: List[Dict]) -> str:
+        """构建 ChatML 格式提示词。"""
+        prompt_parts = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                prompt_parts.append(f"<|im_start|>system\n{content}<|im_end|>\n")
+            elif role == "user":
+                prompt_parts.append(f"<|im_start|>user\n{content}<|im_end|>\n")
+            elif role == "assistant":
+                prompt_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>\n")
+
+        prompt_parts.append("<|im_start|>assistant\n")
+
+        return "".join(prompt_parts)
+
+
+# 全局 LLM 实例
+_llm_instance: Optional[LocalLLM] = None
+
+
+def get_llm() -> LocalLLM:
+    """获取全局 LLM 实例（延迟加载）。"""
+    global _llm_instance
+    if _llm_instance is None:
+        _llm_instance = LocalLLM()
+    return _llm_instance
+
+
+def model_predict(model_name: str, messages: List[Dict]) -> str:
+    """调用本地模型生成回复。"""
+    try:
+        llm = get_llm()
+        return llm.predict(messages)
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# ================= 会话管理类 =================
+
+class ChatManager:
+    """聊天会话管理类。"""
+
+    def __init__(self):
         init_db()
-        
-    def create_session(self, user_id: str, model_name: str = None) -> int:
-        """
-        为指定用户创建新会话
-        :param user_id: 用户ID
-        :param model_name: 使用的默认模型名称（可选）
-        :return: 新创建的会话ID
-        """
-        title = f"新对话-{time.strftime('%Y-%m-%d %H:%M')}"
-        
-        # 保存到数据库
-        conn = sqlite3.connect('chat_history.db')
+
+    def create_session(self, user_id: str, model_name: str = None, role: str = "student") -> int:
+        """创建新会话。"""
+        title = f"New Chat-{time.strftime('%Y-%m-%d %H:%M')}"
+
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO sessions (user_id, title, model) VALUES (?, ?, ?)",
-            (user_id, title, model_name)
+            "INSERT INTO sessions (user_id, title, model, role) VALUES (?, ?, ?, ?)",
+            (user_id, title, model_name or "local", role)
         )
         session_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         return session_id
-        
+
     def get_session_by_user(self, user_id: str) -> Dict:
-        """
-        获取指定用户的最新会话
-        :param user_id: 用户ID
-        :return: 会话数据字典
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """获取用户的最新会话。"""
+        conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # 获取用户最新会话信息
-        cursor.execute("SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1", (user_id,))
+
+        cursor.execute(
+            "SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+            (user_id,)
+        )
         session_row = cursor.fetchone()
-        
+
         if not session_row:
             conn.close()
             return None
-            
-        # 获取会话消息 - 过滤掉system消息
+
         cursor.execute(
-            "SELECT role, content, model FROM messages WHERE session_id = ? AND role IN ('user', 'assistant') ORDER BY timestamp",
+            "SELECT role, content, model FROM messages WHERE session_id = ? "
+            "AND role IN ('user', 'assistant') ORDER BY timestamp",
             (session_row["id"],)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
-        
+
         conn.close()
-        
+
         return {
             "session_id": session_row["id"],
             "messages": messages,
             "model": session_row["model"],
-            "title": session_row["title"]
+            "title": session_row["title"],
+            "role": session_row["role"]
         }
-        
+
     def get_session_by_id(self, session_id: int) -> Dict:
-        """
-        根据会话ID获取会话数据
-        :param session_id: 会话ID
-        :return: 会话数据字典
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """根据 ID 获取会话。"""
+        conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # 获取会话信息
+
         cursor.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
         session_row = cursor.fetchone()
-        
+
         if not session_row:
             conn.close()
             return None
-            
-        # 获取会话消息 - 过滤掉system消息
+
         cursor.execute(
-            "SELECT role, content, model FROM messages WHERE session_id = ? AND role IN ('user', 'assistant') ORDER BY timestamp",
+            "SELECT role, content, model FROM messages WHERE session_id = ? "
+            "AND role IN ('user', 'assistant') ORDER BY timestamp",
             (session_id,)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
-        
+
         conn.close()
-        
+
         return {
             "session_id": session_row["id"],
             "messages": messages,
             "model": session_row["model"],
-            "title": session_row["title"]
+            "title": session_row["title"],
+            "role": session_row["role"]
         }
-        
-    def update_session_title(self, session_id: int, user_input: str, model_name: str = 'Qwen') -> None:
-        """
-        基于用户第一条消息，调用AI生成一个简短的会话标题
-        :param session_id: 会话ID
-        :param user_input: 用户第一条消息内容
-        :param model_name: 使用的AI模型
-        """
+
+    def get_session_messages_with_system(self, session_id: int) -> List[Dict]:
+        """获取会话的所有消息（包含 system）。"""
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp",
+            (session_id,)
+        )
+        messages = [{"role": row[0], "content": row[1]} for row in cursor.fetchall()]
+
+        conn.close()
+        return messages
+
+    def update_session_title(self, session_id: int, user_input: str, model_name: str = None) -> None:
+        """生成会话标题。"""
         try:
-            prompt = f"请根据以下用户的发言，提炼一个非常简短的标题（不超过6个字，不需要标点符号）：\n\"{user_input}\""
+            prompt = f"Please generate a very short title (no more than 6 characters, no punctuation) based on the user's message:\n\"{user_input}\""
             messages = [{"role": "user", "content": prompt}]
-            title = model_predict(model_name, messages)
-            title = title.strip(' "”\'\n').replace('标题：', '').replace('标题:', '')
+            title = model_predict(None, messages)
+            title = title.strip(' " "\'\n').replace('Title:', '').replace('Title：', '')
             if len(title) > 10:
                 title = title[:10]
         except Exception as e:
-            print(f"生成标题失败: {e}")
+            print(f"Failed to generate title: {e}")
             title = user_input[:10] + "..." if len(user_input) > 10 else user_input
-            
-        conn = sqlite3.connect('chat_history.db')
+
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE sessions SET title = ? WHERE id = ?",
-            (user_input, session_id)
-        )
+        cursor.execute("UPDATE sessions SET title = ? WHERE id = ?", (title, session_id))
         conn.commit()
         conn.close()
-        
+
     def delete_session(self, session_id: int) -> bool:
-        """
-        删除指定会话
-        :param session_id: 会话ID
-        :return: 删除是否成功
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """删除会话。"""
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         success = cursor.rowcount > 0
         conn.commit()
         conn.close()
         return success
-        
+
     def list_sessions_by_user(self, user_id: str) -> List[Dict]:
-        """
-        获取指定用户的所有会话列表
-        :param user_id: 用户ID
-        :return: 会话列表
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """获取用户的所有会话。"""
+        conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, model FROM sessions WHERE user_id = ? ORDER BY updated_at DESC", (user_id,))
+        cursor.execute(
+            "SELECT id, title, model, role FROM sessions WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,)
+        )
         rows = cursor.fetchall()
         conn.close()
-        
-        return [{"session_id": row[0], "title": row[1], "model": row[2]} for row in rows]
-        
+
+        return [{"session_id": row[0], "title": row[1], "model": row[2], "role": row[3]} for row in rows]
+
     def add_message(self, session_id: int, role: str, content: str, model: str = None) -> bool:
-        """
-        向会话添加消息
-        :param session_id: 会话ID
-        :param role: 消息角色(user/assistant/system)
-        :param content: 消息内容
-        :param model: 使用的模型（可选）
-        :return: 添加是否成功
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """添加消息。"""
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+
         cursor.execute(
             "INSERT INTO messages (session_id, role, content, model) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, model)
+            (session_id, role, content, model or "local")
         )
-        # 更新会话的更新时间
+
         cursor.execute(
             "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (session_id,)
         )
+
         conn.commit()
         conn.close()
         return True
-        
+
     def clear_session_messages(self, session_id: int) -> bool:
-        """
-        清空会话消息
-        :param session_id: 会话ID
-        :return: 清空是否成功
-        """
-        conn = sqlite3.connect('chat_history.db')
+        """清空会话消息。"""
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
         conn.commit()
@@ -265,61 +420,22 @@ class ChatManager:
         return True
 
 
-# ================= 业务逻辑 =================
-def get_client(model_name: str):
-    """
-    获取对应模型的OpenAI客户端
-    :param model_name: 模型名称(Qwen/ERNIE/Moonshot)
-    :return: OpenAI客户端实例
-    """
-    cfg = MODEL_CONFIG[model_name]
-    return openai.OpenAI(
-        api_key=cfg["api_key"],
-        base_url=cfg["base_url"]
-    )
-
-def model_predict(model_name: str, messages: List[Dict]) -> str:
-    """
-    调用模型API生成回复
-    :param model_name: 模型名称
-    :param messages: 消息历史列表
-    :return: 模型生成的回复内容或错误信息
-    """
-    try:
-        client = get_client(model_name)
-        # 调用模型API，将历史+新消息一起发送给AI
-        response = client.chat.completions.create(
-            model=MODEL_CONFIG[model_name]["model_name"],
-            messages=messages
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        # 错误处理
-        return f"错误：{str(e)}"
-
 def export_markdown(session_id: int, chat_mgr: ChatManager):
-    """
-    将指定会话导出为Markdown格式文件。
-    :param session_id: 会话ID，通过此ID获取对应会话的数据
-    :param chat_mgr: ChatManager实例
-    :return: 导出的Markdown文件路径，如果会话不存在则返回None
-    """
-    # 获取会话数据
+    """导出会话为 Markdown 文件。"""
     session = chat_mgr.get_session_by_id(session_id)
     if not session:
-        # 如果会话不存在，返回None
         return None
-    # 初始化Markdown内容，包含会话标题
-    md_lines = [f"# 会话导出 - {session['title']}"]
-    # 遍历消息历史，将每条消息按"角色：内容"格式转换成Markdown
+
+    md_lines = [f"# Chat Export - {session['title']}"]
+
     for msg in session["messages"]:
-        role = "用户" if msg["role"] == "user" else "AI_Chat"  # 判断消息的角色
-        md_lines.append(f"**{role}：**\n{msg['content']}\n")
-    # 将所有行拼接成完整的Markdown文本
+        role = "User" if msg["role"] == "user" else "AI"
+        md_lines.append(f"**{role}:**\n{msg['content']}\n")
+
     md_content = "\n\n".join(md_lines)
-    # 保存Markdown内容到临时文件
+
     with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".md", encoding="utf-8") as f:
-        f.write(md_content)  # 写入Markdown内容
-        temp_path = f.name  # 获取文件路径
-    # 返回保存的文件路径
+        f.write(md_content)
+        temp_path = f.name
+
     return temp_path
