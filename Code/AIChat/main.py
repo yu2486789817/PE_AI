@@ -498,6 +498,7 @@ async def list_models():
             MODEL_PATH,
             OLLAMA_BASE_URL,
             OLLAMA_MODEL,
+            get_available_models,
             get_model_provider,
         )
 
@@ -510,7 +511,8 @@ async def list_models():
             "model_path": MODEL_PATH,
             "is_finetuned": is_finetuned,
             "base_model": BASE_MODEL_PATH,
-            "quantization": quantization
+            "quantization": quantization,
+            "available_models": get_available_models()
         }
         if provider == "ollama":
             data.update({

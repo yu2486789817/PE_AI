@@ -40,6 +40,14 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
 FINETUNED_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
 BASE_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-Instruct")
 MODEL_PATH = os.getenv("MODEL_PATH", FINETUNED_MODEL_PATH)
+AVAILABLE_MODELS = [
+    item.strip()
+    for item in os.getenv(
+        "AVAILABLE_MODELS",
+        f"ollama:{OLLAMA_MODEL},local:Qwen2.5-3B-PE-Sports,local:Qwen2.5-3B-Instruct"
+    ).split(",")
+    if item.strip()
+]
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "100"))  # 限制输出长度，加快推理
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "256"))
@@ -238,9 +246,9 @@ class LocalLLM:
 class OllamaLLM:
     """Ollama HTTP API client."""
 
-    def __init__(self):
+    def __init__(self, model: str = None):
         self.base_url = OLLAMA_BASE_URL.rstrip("/")
-        self.model = OLLAMA_MODEL
+        self.model = model or OLLAMA_MODEL
 
     def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
         options = {
@@ -288,6 +296,26 @@ def get_model_provider() -> str:
     return "ollama" if _ollama_available() else "local"
 
 
+def get_available_models() -> List[str]:
+    return AVAILABLE_MODELS
+
+
+def _resolve_model_choice(model_name: str) -> tuple[str, str]:
+    if not model_name:
+        provider = get_model_provider()
+        return provider, OLLAMA_MODEL if provider == "ollama" else MODEL_PATH
+
+    value = model_name.strip()
+    lower = value.lower()
+    if lower.startswith("ollama:"):
+        return "ollama", value.split(":", 1)[1]
+    if lower == "ollama":
+        return "ollama", OLLAMA_MODEL
+    if lower.startswith("local:") or "qwen" in lower:
+        return "local", MODEL_PATH
+    return get_model_provider(), value
+
+
 def get_llm():
     """获取全局 LLM 实例（延迟加载）。"""
     global _llm_instance
@@ -301,7 +329,8 @@ def get_llm():
 
 def model_predict(model_name: str, messages: List[Dict], max_tokens: int = None) -> str:
     """调用本地模型生成回复。"""
-    llm = get_llm()
+    provider, resolved_model = _resolve_model_choice(model_name)
+    llm = OllamaLLM(resolved_model) if provider == "ollama" else LocalLLM()
     return llm.predict(messages, max_tokens=max_tokens)
 
 

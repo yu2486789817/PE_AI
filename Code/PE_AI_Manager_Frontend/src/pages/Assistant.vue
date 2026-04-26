@@ -191,6 +191,12 @@ const normalizeModels = (modelsData) => {
     return []
   }
 
+  if (Array.isArray(modelsData.available_models)) {
+    return modelsData.available_models
+      .filter(value => typeof value === 'string' && value.trim())
+      .map(value => ({ label: value, value }))
+  }
+
   const combinedLabel = formatModelLabel(modelsData.model, modelsData.ollama_model)
   const optionLabels = [combinedLabel, modelsData.model]
     .filter(value => typeof value === 'string' && value.trim())
