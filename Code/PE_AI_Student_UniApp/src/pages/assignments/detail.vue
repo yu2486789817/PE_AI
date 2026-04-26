@@ -97,13 +97,49 @@ const loadAssignment = async () => {
 
 		if (resp.data?.success && resp.data.data) {
 			const d = resp.data.data.split('\t\r');
-			const isActive = d[2] && new Date(d[2]) > new Date();
+			const deadline = d[2] || '';
+
+			// 检查提交状态
+			let statusText = '进行中';
+			let statusClass = 'active';
+			try {
+				const user = uni.getStorageSync('user') || {};
+				const token = uni.getStorageSync('token') || '';
+				const submitResp = await request.post('/Homework/get_submit_id_by_student', {
+					first: '0',
+					second: user?.id,
+					third: token,
+					fourth: assignmentId.value,
+					fifth: user?.id
+				});
+				if (submitResp.data?.success && submitResp.data?.data) {
+					const submitData = submitResp.data.data.trim();
+					const invalidValues = ['NULL', '-1', '-2', ''];
+					if (!invalidValues.includes(submitData)) {
+						statusText = '已完成';
+						statusClass = 'active';
+					} else if (deadline && new Date(deadline) < new Date()) {
+						statusText = '已截止';
+						statusClass = 'ended';
+					}
+				} else if (deadline && new Date(deadline) < new Date()) {
+					statusText = '已截止';
+					statusClass = 'ended';
+				}
+			} catch (e) {
+				// 检查失败时 fallback 到截止日期判断
+				if (deadline && new Date(deadline) < new Date()) {
+					statusText = '已截止';
+					statusClass = 'ended';
+				}
+			}
+
 			assignment.value = {
 				title: d[0] || `作业 ${assignmentId.value}`,
 				description: d[1] || '',
-				deadline: d[2] || '',
-				statusText: isActive ? '进行中' : '已截止',
-				statusClass: isActive ? 'active' : 'ended'
+				deadline: deadline,
+				statusText: statusText,
+				statusClass: statusClass
 			};
 		}
 
@@ -154,44 +190,22 @@ const submitAssignment = async () => {
 	try {
 		if (!studentId) throw new Error('未获取到学生ID');
 
-		// 1) 上传前压缩，降低存储占用与分析显存压力
 		const compressed = await compressVideo(selectedFile.value.path);
-		processingText.value = 'AI分析中...';
+		processingText.value = '正在上传视频，AI分析将在后台进行...';
 
-		// 2) 对齐 Web 流程：先调用 YOLO 处理并落盘
-		const poseType = aiType.value || 'squat';
-		const processUrl = `/video/process_and_save_video?homework_id=${encodeURIComponent(assignmentId.value)}&student_id=${encodeURIComponent(studentId)}&pose_type=${encodeURIComponent(poseType)}`;
-		await uploadToYolo(processUrl, compressed.path);
-
-		// 3) 将处理后视频 URL 写入作业提交表
-		processingText.value = '保存作业记录...';
-		const processedVideoUrl = `/video/get_processed_video?homework_id=${encodeURIComponent(assignmentId.value)}&student_id=${encodeURIComponent(studentId)}&download=false`;
-		const submitResp = await request.post('/Homework/submit_homework', {
-			first: studentId,
-			second: jwt,
-			third: courseId.value,
-			fourth: assignmentId.value,
-			fifth: processedVideoUrl
+		const submitResp = await uploadHomeworkVideo(compressed.path, {
+			student_id: studentId,
+			course_id: courseId.value,
+			homework_id: assignmentId.value,
+			pose_type: aiType.value || 'pushup'
 		});
 
-			const submitId = submitResp?.data?.data;
-			if (submitId) {
-				// 4) 拉取 AI 统计并计算分数（与 Web 保持一致）
-				const required = Number(requiredCount.value) || 0;
-				const stats = await fetchAiStats(assignmentId.value, studentId, poseType);
-				const correctCount = Number(stats?.correct_count) || 0;
-				const aiScore = required > 0 ? Math.round((correctCount / required) * 100) : 0;
-				const aiFeedback = buildAiFeedback(stats) || 'AI分析已完成，详细反馈可在教师端查看。';
-				await request.post('/Homework/AI_test', {
-					first: String(submitId),
-					second: processedVideoUrl,
-					third: String(aiScore),
-					fourth: aiFeedback
-				});
-			}
+		if (!submitResp?.data?.success) {
+			throw new Error(submitResp?.data?.message || '提交失败');
+		}
 
 		uploadProgress.value = 100;
-		uni.showToast({ title: '提交成功' });
+		uni.showToast({ title: '提交成功，AI后台分析中' });
 		selectedFile.value = null;
 		if (assignment.value) {
 			assignment.value.statusText = '已提交';
@@ -225,21 +239,33 @@ const compressVideo = (src) => {
 	});
 };
 
-const uploadToYolo = (url, filePath) => {
+const uploadHomeworkVideo = (filePath, formData) => {
 	return new Promise((resolve, reject) => {
 		uni.uploadFile({
-			url,
+			url: '/Homework/upload_submit',
 			filePath,
 			name: 'file',
+			formData,
+			header: {
+				Authorization: `Bearer ${uni.getStorageSync('token') || ''}`
+			},
 			success: (res) => {
 				if (res.statusCode >= 200 && res.statusCode < 300) {
+					if (typeof res.data === 'string') {
+						try {
+							res.data = JSON.parse(res.data);
+						} catch (e) {
+							reject(new Error('提交响应解析失败'));
+							return;
+						}
+					}
 					resolve(res);
 					return;
 				}
-				reject(new Error(`AI服务调用失败(${res.statusCode})`));
+				reject(new Error(`上传失败(${res.statusCode})`));
 			},
 			fail: () => {
-				reject(new Error('AI服务调用失败'));
+				reject(new Error('上传失败'));
 			}
 		});
 	});

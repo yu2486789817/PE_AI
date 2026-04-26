@@ -17,6 +17,8 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
+    port: 5300,
     proxy: {
       '/User': {
         target: 'http://localhost:5001',
@@ -56,14 +58,12 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/chat/, '')
       },
       '/Teaching-video': {
-        target: 'http://localhost:5002',
+        target: 'http://localhost:5001',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/Teaching-video/, '')
+        secure: false
       }
 
 
     }
   }
 })
-

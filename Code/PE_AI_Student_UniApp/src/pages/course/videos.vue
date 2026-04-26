@@ -49,9 +49,9 @@ const loadVideos = async () => {
 	const token = uni.getStorageSync('token') || user?.token || '';
 	try {
 		const idResp = await request.post('/Class/get_class_id_by_course', {
-			first: '0',
-			second: user?.id,
-			third: token,
+			capacity: '0',
+			user_id: user?.id,
+			jwt: token,
 			fourth: courseId.value
 		});
 
@@ -67,7 +67,8 @@ const loadVideos = async () => {
 			try {
 				const infoResp = await request.post('/Class/get_info_by_class_id', {
 					first: courseId.value,
-					second: cid
+					second: cid,
+					jwt: token
 				});
 				if (infoResp.data?.success && infoResp.data?.data) {
 					const d = infoResp.data.data.split('\t\r');

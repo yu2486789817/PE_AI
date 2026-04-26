@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "E:\\College\\3down\\SEE\\datasets",
+  "weights_dir": "E:\\College\\3down\\SEE\\SoftwareEngineeringProject-Code\\weights",
+  "runs_dir": "E:\\College\\3down\\SEE\\SoftwareEngineeringProject-Code\\runs",
+  "uuid": "7d0ac6227db0e2622484dd6921168ed64e4db8476d268ea695f3cc868276972c",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,6 +29,9 @@ import java.util.stream.Collectors;
 @RestController
 @RequiredArgsConstructor
 public class LegacyCourseController {
+
+    private static final DateTimeFormatter LEGACY_DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final CourseMapper courseMapper;
     private final HomeworkMapper homeworkMapper;
@@ -62,9 +66,14 @@ public class LegacyCourseController {
         String capacity = getParam(body, "capacity");
         String userId = getParam(body, "user_id");
         String jwt = resolveJwt(body, request);
+        String legacyThird = getParam(body, "third");
 
         if (capacity == null) capacity = getParam(body, "first");
         if (userId == null) userId = getParam(body, "second");
+        if (capacity != null && userId != null && legacyThird != null &&
+                ("0".equals(capacity.trim()) || "1".equals(capacity.trim()))) {
+            jwt = RequestValueResolver.normalizeBearerToken(legacyThird);
+        }
 
         if (capacity != null && userId != null && ("0".equals(capacity.trim()) || "1".equals(capacity.trim()))) {
             return userService.checkJwt(Integer.parseInt(capacity.trim()), userId, jwt);
@@ -247,9 +256,6 @@ public class LegacyCourseController {
     @PostMapping("/Course/get_info_by_course_id")
     public Result<String> getCourseInfoById(@RequestBody Map<String, String> body,
                                             HttpServletRequest request) {
-        Result<Void> auth = checkLegacyAuth(body, request);
-        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
-
         String courseId = getParam(body, "first");
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
@@ -379,6 +385,85 @@ public class LegacyCourseController {
         return Result.success();
     }
 
+    @PostMapping("/Course/edit_course")
+    public Result<Void> editCourse(@RequestBody Map<String, String> body,
+                                   HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String name = getParam(body, "fourth");
+        String semesterStr = getParam(body, "fifth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        if (name != null) course.setName(name);
+        if (semesterStr != null && !semesterStr.isEmpty()) {
+            try {
+                course.setSemester(Integer.parseInt(semesterStr.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/edit_info")
+    public Result<Void> editCourseInfo(@RequestBody Map<String, String> body,
+                                       HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String info = getParam(body, "fourth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        course.setInfo(info);
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/edit_is_active")
+    public Result<Void> editCourseIsActive(@RequestBody Map<String, String> body,
+                                           HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String isActiveStr = getParam(body, "fourth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        if (isActiveStr != null && !isActiveStr.isEmpty()) {
+            try {
+                course.setIsActive(Integer.parseInt(isActiveStr.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
     // ─────────────────────────────────────────────
     // /Course_student — 获取课程下的学生列表
     // ─────────────────────────────────────────────
@@ -441,9 +526,6 @@ public class LegacyCourseController {
     @PostMapping("/Homework/get_info_by_homework_id")
     public Result<String> getHomeworkInfoById(@RequestBody Map<String, String> body,
                                               HttpServletRequest request) {
-        Result<Void> auth = checkLegacyAuth(body, request);
-        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
-
         String homeworkIdStr = getParam(body, "second");
         if (homeworkIdStr == null) homeworkIdStr = getParam(body, "first");
         if (homeworkIdStr == null) return Result.error(-10, "Missing homework id");
@@ -513,7 +595,11 @@ public class LegacyCourseController {
 
     /**
      * 更新AI评价
-     * 前端发: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
+     * 支持两种传参方式：
+     * 1. 教师调用（显式参数）: { teacher_id, jwt, submit_id, score, ai_feedback }
+     * 2. 学生/系统调用（位置参数）: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
+     *
+     * 学生调用时无需教师鉴权，仅校验提交记录存在性并更新AI评价字段。
      */
     @PostMapping("/Homework/AI_test")
     public Result<Void> aiTest(@RequestBody Map<String, String> body,
@@ -524,31 +610,93 @@ public class LegacyCourseController {
         String scoreStr = getParam(body, "score");
         String aiFeedback = getParam(body, "ai_feedback");
 
-        // Legacy positional fallback: { first: teacherId, second: jwt, third: submitId, fourth: score, fifth: aiFeedback }
+        // Legacy positional fallback: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
         if (submitIdStr == null) {
-            teacherId = getParam(body, "first");
-            if (jwt == null) jwt = getParam(body, "second");
-            submitIdStr = getParam(body, "third");
-            scoreStr = getParam(body, "fourth");
-            aiFeedback = getParam(body, "fifth");
+            submitIdStr = getParam(body, "first");
+            scoreStr = getParam(body, "third");
+            aiFeedback = getParam(body, "fourth");
         }
-        if (teacherId == null || submitIdStr == null) return Result.error(-10, "Missing params");
+        if (submitIdStr == null) return Result.error(-10, "Missing params");
+
+        // 教师鉴权模式
+        if (teacherId != null && jwt != null) {
+            Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+            if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+            Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
+            if (submit == null) return Result.error(-21, "Submit not found");
+            Homework homework = homeworkMapper.selectById(submit.getHomeworkId());
+            if (homework == null) return Result.error(-21, "Homework not found");
+            Course course = courseMapper.selectById(homework.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+            if (scoreStr != null && !scoreStr.isEmpty()) {
+                try { submit.setScore(Integer.parseInt(scoreStr.trim())); } catch (NumberFormatException ignored) {}
+            }
+            if (aiFeedback != null) submit.setAiFeedback(aiFeedback);
+            submitMapper.updateById(submit);
+            return Result.success();
+        }
+
+        // 学生/系统模式：无需教师鉴权，直接更新AI评价
+        Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
+        if (submit == null) return Result.error(-21, "Submit not found");
+
+        if (scoreStr != null && !scoreStr.isEmpty()) {
+            try { submit.setScore(Integer.parseInt(scoreStr.trim())); } catch (NumberFormatException ignored) {}
+        }
+        if (aiFeedback != null) submit.setAiFeedback(aiFeedback);
+        submitMapper.updateById(submit);
+        return Result.success();
+    }
+
+    @PostMapping("/Homework/teacher_test")
+    public Result<Void> teacherTest(@RequestBody Map<String, String> body,
+                                    HttpServletRequest request) {
+        String teacherId = getParam(body, "teacher_id");
+        if (teacherId == null) teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "course_id");
+        if (courseId == null) courseId = getParam(body, "third");
+        String homeworkIdStr = getParam(body, "homework_id");
+        if (homeworkIdStr == null) homeworkIdStr = getParam(body, "fourth");
+        String submitIdStr = getParam(body, "submit_id");
+        if (submitIdStr == null) submitIdStr = getParam(body, "fifth");
+        String scoreStr = getParam(body, "score");
+        if (scoreStr == null) scoreStr = getParam(body, "sixth");
+        String teacherFeedback = getParam(body, "teacher_feedback");
+        if (teacherFeedback == null) teacherFeedback = getParam(body, "seventh");
+
+        if (teacherId == null || courseId == null || homeworkIdStr == null || submitIdStr == null) {
+            return Result.error(-10, "Missing params");
+        }
 
         Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
         if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
 
         Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
         if (submit == null) return Result.error(-21, "Submit not found");
-        Homework homework = homeworkMapper.selectById(submit.getHomeworkId());
+        Homework homework = homeworkMapper.selectById(Integer.parseInt(homeworkIdStr.trim()));
         if (homework == null) return Result.error(-21, "Homework not found");
-        Course course = courseMapper.selectById(homework.getCourseId());
+        if (!homework.getId().equals(submit.getHomeworkId())) return Result.error(-10, "Submit/Homework mismatch");
+        if (!courseId.equals(homework.getCourseId())) return Result.error(-10, "Course/Homework mismatch");
+        Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
 
-        if (scoreStr != null && !scoreStr.isEmpty()) {
-            try { submit.setScore(Integer.parseInt(scoreStr.trim())); } catch (NumberFormatException ignored) {}
+        if (scoreStr != null && !scoreStr.isBlank()) {
+            try {
+                int score = Integer.parseInt(scoreStr.trim());
+                if (score < 0 || score > 100) {
+                    return Result.error(-10, "Score must be between 0 and 100");
+                }
+                submit.setScore(score);
+            } catch (NumberFormatException ignored) {
+                return Result.error(-10, "Invalid score");
+            }
         }
-        if (aiFeedback != null) submit.setAiFeedback(aiFeedback);
+        submit.setTeacherFeedback(teacherFeedback == null ? "" : teacherFeedback);
         submitMapper.updateById(submit);
         return Result.success();
     }
@@ -677,16 +825,23 @@ public class LegacyCourseController {
 
         Homework hw = new Homework();
         hw.setCourseId(courseId);
-        hw.setTitle(getParam(body, "second"));
-        String deadlineStr = getParam(body, "third");
+        String title = getParam(body, "title");
+        if (title == null) title = getParam(body, "fourth");
+        if (title == null) title = getParam(body, "second");
+        hw.setTitle(title);
+
+        String description = getParam(body, "description");
+        if (description == null) description = getParam(body, "fifth");
+        if (description == null) description = getParam(body, "fourth");
+
+        String deadlineStr = getParam(body, "deadline");
+        if (deadlineStr == null) deadlineStr = getParam(body, "sixth");
+        if (deadlineStr == null) deadlineStr = getParam(body, "fourth");
         if (courseId != null && courseId.equals(deadlineStr)) {
-            deadlineStr = getParam(body, "fourth");
+            deadlineStr = getParam(body, "sixth");
         }
-        hw.setDeadline(LocalDateTime.parse(deadlineStr.replace("Z", "")));
-        hw.setDescription(getParam(body, "fourth"));
-        if (deadlineStr != null && deadlineStr.equals(hw.getDescription())) {
-            hw.setDescription(getParam(body, "fifth"));
-        }
+        hw.setDeadline(parseDateTime(deadlineStr));
+        hw.setDescription(description);
         hw.setCreateTime(LocalDateTime.now());
         homeworkMapper.insert(hw);
         return Result.success(String.valueOf(hw.getId()));
@@ -700,6 +855,19 @@ public class LegacyCourseController {
         String hwIdStr = getParam(body, "third");
         String type = getParam(body, "fourth");
         String num = getParam(body, "fifth");
+        String courseId = getParam(body, "course_id");
+        if (courseId == null) courseId = getParam(body, "third");
+        String explicitHwId = getParam(body, "homework_id");
+        if (explicitHwId == null) explicitHwId = getParam(body, "fourth");
+        String explicitType = getParam(body, "type");
+        if (explicitType == null) explicitType = getParam(body, "fifth");
+        String explicitNum = getParam(body, "num");
+        if (explicitNum == null) explicitNum = getParam(body, "sixth");
+        if (explicitHwId != null && explicitType != null && explicitNum != null) {
+            hwIdStr = explicitHwId;
+            type = explicitType;
+            num = explicitNum;
+        }
         if (num == null) {
             hwIdStr = getParam(body, "first");
             type = getParam(body, "second");
@@ -713,6 +881,12 @@ public class LegacyCourseController {
 
         Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
         if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        if (courseId != null && explicitHwId != null) {
+            Course course = courseMapper.selectById(courseId);
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        }
 
         Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
         if (hw == null) return Result.error(-21, "Homework not found");
@@ -831,7 +1005,7 @@ public class LegacyCourseController {
             hw.setDescription(getParam(body, "sixth"));
             String deadlineStr = getParam(body, "seventh");
             if (deadlineStr != null && !deadlineStr.isEmpty()) {
-                hw.setDeadline(LocalDateTime.parse(deadlineStr.replace("Z", "")));
+                hw.setDeadline(parseDateTime(deadlineStr));
             }
             homeworkMapper.updateById(hw);
         }
@@ -947,9 +1121,6 @@ public class LegacyCourseController {
     @PostMapping("/Class/get_info_by_class_id")
     public Result<String> getClassInfoById(@RequestBody Map<String, String> body,
                                            HttpServletRequest request) {
-        Result<Void> auth = checkLegacyAuth(body, request);
-        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
-
         // Try second first, as it's often the classId in (courseId, classId) pairs
         String classIdStr = getParam(body, "second");
         
@@ -1086,5 +1257,13 @@ public class LegacyCourseController {
     private boolean isNumeric(String s) {
         if (s == null || s.trim().isEmpty()) return false;
         return s.trim().matches("\\d+");
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        String normalized = value == null ? "" : value.trim().replace("Z", "");
+        if (normalized.contains("T")) {
+            return LocalDateTime.parse(normalized);
+        }
+        return LocalDateTime.parse(normalized, LEGACY_DATE_TIME_FORMATTER);
     }
 }

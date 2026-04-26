@@ -55,6 +55,7 @@ model/
 models/
 *.db
 *.sqlite
+.pydeps
 
 # Java - pe-ai-backend
 target/

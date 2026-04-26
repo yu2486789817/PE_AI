@@ -470,9 +470,9 @@ const loadVideos = async () => {
 
   for (const courseId of targetIds) {
     const resp = await apiClient.post('/Class/get_class_id_by_course', {
-      first: '1',
-      second: teacherId,
-      third: jwt,
+      capacity: '1',
+      user_id: teacherId,
+      jwt,
       fourth: courseId
     })
 
@@ -483,7 +483,8 @@ const loadVideos = async () => {
     const infoPromises = classIds.map(classId =>
       apiClient.post('/Class/get_info_by_class_id', {
         first: courseId,
-        second: classId
+        second: classId,
+        jwt
       })
     )
     const infoResps = await Promise.all(infoPromises)

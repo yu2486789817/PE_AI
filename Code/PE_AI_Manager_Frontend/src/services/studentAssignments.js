@@ -103,13 +103,14 @@ export class StudentAssignmentService {
 
       // 检查返回值
       if (response.data && response.data.success) {
-        if (response.data >= 0) {
-          return response.data;
-        } else if (response.data === -26) {
+        const scoreData = response.data.data;
+        if (typeof scoreData === 'number' && scoreData >= 0) {
+          return scoreData;
+        } else if (scoreData === -26) {
           // 当前学生在当前作业下还没有已经进行评分的提交
           return null;
         } else {
-          console.warn('获取最终得分返回错误码:', response.data);
+          console.warn('获取最终得分返回错误码:', scoreData);
           return null;
         }
       } else if (response.data && typeof response.data === 'object' && response.data.score !== undefined) {

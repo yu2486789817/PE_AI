@@ -312,6 +312,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { StudentAssignmentService } from '../../services/studentAssignments'
+import { apiClient } from '../../services/axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -367,12 +368,66 @@ const fetchAssignmentDetails = async () => {
     requiredCount.value = poseTypeInfo.requiredCount;
     console.log('AI类型:', aiType.value);
     console.log('要求数量:', requiredCount.value);
+
+    // 检查是否已有提交记录，更新作业状态
+    await checkSubmissionStatus();
   } catch (err) {
     console.error('获取作业详情失败:', err);
     error.value = true;
     errorMessage.value = err.message || '获取作业详情失败，请稍后重试';
   } finally {
     loading.value = false;
+  }
+};
+
+// 检查提交状态
+const checkSubmissionStatus = async () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const studentId = user.id;
+    const token = localStorage.getItem('token') || user.token || '';
+
+    if (!studentId || !token) {
+      console.log('未找到用户信息，无法检查提交状态');
+      return;
+    }
+
+    console.log('开始检查提交状态, studentId:', studentId, 'assignmentId:', assignmentId);
+
+    // 调用 get_submit_id_by_student 获取提交ID列表
+    const submitIdResponse = await apiClient.post('/Homework/get_submit_id_by_student', {
+      first: '0',
+      second: studentId,
+      third: token,
+      fourth: assignmentId,
+      fifth: studentId
+    });
+
+    console.log('get_submit_id_by_student 响应:', submitIdResponse.data);
+
+    if (submitIdResponse.data.success && submitIdResponse.data.data) {
+      const submitData = submitIdResponse.data.data;
+      console.log('提交数据:', submitData);
+
+      // 检查是否有有效的提交ID（不是 NULL、-1、-2、空字符串）
+      const invalidValues = ['NULL', '-1', '-2', ''];
+      const hasValidSubmit = !invalidValues.includes(submitData.trim());
+
+      if (hasValidSubmit) {
+        // 有提交记录，更新状态为已完成
+        if (assignment.value) {
+          assignment.value.status = '已完成';
+          console.log('该作业已有有效提交记录(submitId=' + submitData + ')，状态更新为已完成');
+        }
+      } else {
+        console.log('提交数据无效(' + submitData + ')，保持当前状态:', assignment.value?.status);
+      }
+    } else {
+      console.log('提交状态检查失败或无数据:', submitIdResponse.data);
+    }
+  } catch (err) {
+    console.error('检查提交状态失败:', err);
+    // 不影响主流程，静默处理
   }
 };
 
@@ -479,7 +534,80 @@ const getProcessedVideo = async (homeworkId, studentId) => {
 }
 
 // 提交作业
+const uploadHomeworkVideo = (formData, token) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/Homework/upload_submit')
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        uploadProgress.value = Math.round((event.loaded / event.total) * 100)
+      }
+    }
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText || '{}')
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data)
+        } else {
+          reject(new Error(data.message || `上传失败(${xhr.status})`))
+        }
+      } catch (error) {
+        reject(new Error('提交响应解析失败'))
+      }
+    }
+    xhr.onerror = () => reject(new Error('上传失败，请检查网络'))
+    xhr.send(formData)
+  })
+}
+
 const submitAssignment = async () => {
+  if (!selectedFile.value) return
+
+  try {
+    aiEvaluationSaved.value = false
+    uploadProgress.value = 0
+    isUploading.value = true
+    isProcessing.value = false
+    processingStats.value = '正在上传视频，AI分析将在后台进行...'
+    processingVideoFrame.value = ''
+    showProcessedVideo.value = false
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const studentId = user.id || 'student1'
+    const token = localStorage.getItem('token') || user.token || ''
+
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+    formData.append('student_id', studentId)
+    formData.append('course_id', courseId)
+    formData.append('homework_id', assignmentId)
+    formData.append('pose_type', aiType.value || 'pushup')
+
+    const response = await uploadHomeworkVideo(formData, token)
+    if (!response?.success) {
+      throw new Error(response?.message || '作业提交失败')
+    }
+
+    if (assignment.value) {
+      assignment.value.status = '已提交'
+    }
+
+    removeFile()
+    await fetchFinalScore()
+
+    ElMessageBox.alert('作业提交成功，AI分析将在后台进行。', '提示', {
+      confirmButtonText: '确定',
+      type: 'success'
+    })
+  } catch (error) {
+    console.error('作业提交失败:', error)
+    alert(`作业提交失败: ${error.message}`)
+  } finally {
+    isUploading.value = false
+    isProcessing.value = false
+  }
+  return
   if (!selectedFile.value || assignment.value.status === '已完成') return
 
   try {

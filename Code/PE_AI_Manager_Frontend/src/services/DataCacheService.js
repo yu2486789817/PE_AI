@@ -29,10 +29,17 @@ class DataCacheService {
     try {
       const data = await fetchFn();
       // 存入缓存
-      this.cache.set(key, {
-        data,
-        timestamp: Date.now()
-      });
+      const responseBody = data?.data;
+      const failedResult = responseBody && (
+        responseBody.success === false ||
+        (typeof responseBody.code === 'number' && responseBody.code < 0)
+      );
+      if (!failedResult) {
+        this.cache.set(key, {
+          data,
+          timestamp: Date.now()
+        });
+      }
       return data;
     } catch (error) {
       console.error(`[Cache Fetch Error] ${key}:`, error);

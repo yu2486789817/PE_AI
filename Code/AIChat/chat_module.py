@@ -17,6 +17,8 @@ import sqlite3
 import tempfile
 import logging
 from typing import Dict, List, Optional
+
+import requests
 from database import init_db, DB_PATH
 
 # ================= 日志配置 =================
@@ -32,9 +34,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ================= 模型配置 =================
 # 只使用微调模型
-MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "auto").lower()
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
+FINETUNED_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
+BASE_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-Instruct")
+MODEL_PATH = os.getenv("MODEL_PATH", FINETUNED_MODEL_PATH)
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "100"))  # 限制输出长度，加快推理
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "256"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS")) if os.getenv("MAX_TOKENS") else None
+TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "32"))
 LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "true").lower() == "true"
 LOAD_IN_8BIT = os.getenv("LOAD_IN_8BIT", "false").lower() == "true"
 USE_CPU_OFFLOAD = os.getenv("USE_CPU_OFFLOAD", "false").lower() == "true"
@@ -158,7 +168,6 @@ class LocalLLM:
         import time
 
         start_time = time.time()
-        max_tokens = max_tokens or MAX_TOKENS
         temperature = temperature or TEMPERATURE
 
         prompt = self._build_prompt(messages)
@@ -226,24 +235,74 @@ class LocalLLM:
 
 
 # 全局 LLM 实例
-_llm_instance: Optional[LocalLLM] = None
+class OllamaLLM:
+    """Ollama HTTP API client."""
+
+    def __init__(self):
+        self.base_url = OLLAMA_BASE_URL.rstrip("/")
+        self.model = OLLAMA_MODEL
+
+    def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
+        options = {
+            "temperature": temperature or TEMPERATURE,
+        }
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        elif MAX_TOKENS is not None:
+            options["num_predict"] = MAX_TOKENS
+
+        response = requests.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "think": False,
+                "options": options,
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json()
+        message = data.get("message", {})
+        content = message.get("content", "")
+        if content:
+            return content.strip()
+        return message.get("thinking", "").strip()
 
 
-def get_llm() -> LocalLLM:
+_llm_instance = None
+
+
+def _ollama_available() -> bool:
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=2)
+        return response.ok
+    except requests.RequestException:
+        return False
+
+
+def get_model_provider() -> str:
+    if MODEL_PROVIDER in ("local", "ollama"):
+        return MODEL_PROVIDER
+    return "ollama" if _ollama_available() else "local"
+
+
+def get_llm():
     """获取全局 LLM 实例（延迟加载）。"""
     global _llm_instance
     if _llm_instance is None:
-        _llm_instance = LocalLLM()
+        if get_model_provider() == "ollama":
+            _llm_instance = OllamaLLM()
+        else:
+            _llm_instance = LocalLLM()
     return _llm_instance
 
 
-def model_predict(model_name: str, messages: List[Dict]) -> str:
+def model_predict(model_name: str, messages: List[Dict], max_tokens: int = None) -> str:
     """调用本地模型生成回复。"""
-    try:
-        llm = get_llm()
-        return llm.predict(messages)
-    except Exception as e:
-        return f"Error: {str(e)}"
+    llm = get_llm()
+    return llm.predict(messages, max_tokens=max_tokens)
 
 
 # ================= 会话管理类 =================
@@ -262,7 +321,7 @@ class ChatManager:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO sessions (user_id, title, model, role) VALUES (?, ?, ?, ?)",
-            (user_id, title, model_name or "local", role)
+            (user_id, title, model_name or get_model_provider(), role)
         )
         session_id = cursor.lastrowid
         conn.commit()
@@ -353,7 +412,7 @@ class ChatManager:
         try:
             prompt = f"Please generate a very short title (no more than 6 characters, no punctuation) based on the user's message:\n\"{user_input}\""
             messages = [{"role": "user", "content": prompt}]
-            title = model_predict(None, messages)
+            title = model_predict(None, messages, max_tokens=TITLE_MAX_TOKENS)
             title = title.strip(' " "\'\n').replace('Title:', '').replace('Title：', '')
             if len(title) > 10:
                 title = title[:10]
@@ -398,7 +457,7 @@ class ChatManager:
 
         cursor.execute(
             "INSERT INTO messages (session_id, role, content, model) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, model or "local")
+            (session_id, role, content, model or get_model_provider())
         )
 
         cursor.execute(

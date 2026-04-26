@@ -112,13 +112,41 @@ const loadCourseDetails = async () => {
 					})
 					if (infoResp.data?.success && infoResp.data.data) {
 						const ad = String(infoResp.data.data).split('\t\r')
-						const active = ad[2] && new Date(ad[2]) > new Date()
+						const deadline = ad[2] || ''
+
+						// 检查提交状态
+						let statusText = '进行中'
+						try {
+							const submitResp = await request.post('/Homework/get_submit_id_by_student', {
+								first: '0',
+								second: user?.id,
+								third: token,
+								fourth: hwId.trim(),
+								fifth: user?.id
+							})
+							if (submitResp.data?.success && submitResp.data?.data) {
+								const submitData = submitResp.data.data.trim()
+								const invalidValues = ['NULL', '-1', '-2', '']
+								if (!invalidValues.includes(submitData)) {
+									statusText = '已完成'
+								} else if (deadline && new Date(deadline) < new Date()) {
+									statusText = '已截止'
+								}
+							} else if (deadline && new Date(deadline) < new Date()) {
+								statusText = '已截止'
+							}
+						} catch (e) {
+							if (deadline && new Date(deadline) < new Date()) {
+								statusText = '已截止'
+							}
+						}
+
 						items.push({
 							id: hwId.trim(),
 							title: ad[0] || `作业 ${hwId}`,
 							description: ad[1] || '',
-							deadline: ad[2] || '',
-							statusText: active ? '进行中' : '已截止'
+							deadline: deadline,
+							statusText: statusText
 						})
 					}
 				} catch (e) {

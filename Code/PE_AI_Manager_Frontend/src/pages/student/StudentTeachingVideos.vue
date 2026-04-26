@@ -209,10 +209,10 @@ const loadVideos = async () => {
     try {
       // 获取该课程下所有教学任务ID
       const classIdResp = await apiClient.post('/Class/get_class_id_by_course', {
-        first: '0',       // user_type: 学生
-        second: studentId, // user_id
-        third: jwt,       // jwt
-        fourth: courseId  // course_id
+        capacity: '0',
+        user_id: studentId,
+        jwt,
+        fourth: courseId
       })
 
       if (!classIdResp.data.data) {
@@ -227,7 +227,8 @@ const loadVideos = async () => {
       for (const classId of classIds) {
         const infoResp = await apiClient.post('/Class/get_info_by_class_id', {
           first: courseId,
-          second: classId
+          second: classId,
+          jwt
         })
 
         if (!infoResp.data.data) {

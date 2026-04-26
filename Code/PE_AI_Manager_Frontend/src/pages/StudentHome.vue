@@ -170,8 +170,41 @@ const fetchCourseList = async () => {
           })
 
           let totalAssignments = 0
+          let completedAssignments = 0
+          let completionRate = 0
+
           if (homeworkResponse.data.success && homeworkResponse.data.data && homeworkResponse.data.data !== 'NULL') {
-            totalAssignments = String(homeworkResponse.data.data).split('\t\r').map((x) => x.trim()).filter(Boolean).length
+            const homeworkIds = String(homeworkResponse.data.data).split('\t\r').map((x) => x.trim()).filter(Boolean)
+            totalAssignments = homeworkIds.length
+
+            // 查询每个作业的提交状态
+            for (const homeworkId of homeworkIds) {
+              try {
+                const submitResponse = await apiClient.post('/Homework/get_submit_id_by_student', {
+                  first: '0',
+                  second: studentId,
+                  third: token,
+                  fourth: homeworkId,
+                  fifth: studentId
+                })
+
+                if (submitResponse.data.success && submitResponse.data.data) {
+                  const submitData = submitResponse.data.data.trim()
+                  // 检查是否有有效提交（不是 NULL、-1、-2、空字符串）
+                  const invalidValues = ['NULL', '-1', '-2', '']
+                  if (!invalidValues.includes(submitData)) {
+                    completedAssignments++
+                  }
+                }
+              } catch (e) {
+                console.error(`查询作业 ${homeworkId} 提交状态失败`, e)
+              }
+            }
+
+            // 计算完成率
+            if (totalAssignments > 0) {
+              completionRate = Math.round((completedAssignments / totalAssignments) * 100)
+            }
           }
 
           return {
@@ -181,8 +214,8 @@ const fetchCourseList = async () => {
             subject: arr[3] || '',
             status: isActive === '1' ? '进行中' : '已结束',
             totalAssignments,
-            completedAssignments: 0,
-            completionRate: 0
+            completedAssignments,
+            completionRate
           }
         } catch (error) {
           console.error(`获取课程 ${courseId} 详情失败`, error)

@@ -26,6 +26,7 @@ import sqlite3
 import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from chat_module import get_model_provider
 from database import DB_PATH  # 导入数据库路径
 
 # ================= 日志配置 =================
@@ -319,14 +320,14 @@ async def generate_analysis_report(model_predict_func, request: Request):
         messages = [{"role": "user", "content": prompt}]
 
         t3 = time.time()
-        report_content = model_predict_func("local", messages)
+        report_content = model_predict_func(get_model_provider(), messages)
         t4 = time.time()
         logger.info(f"[性能] 模型推理耗时: {t4-t3:.2f}s")
 
         # 保存报告
         save_ai_analysis_report(
             homework_id, student_id, pose_type, analysis_type,
-            query_content, report_content, raw_data, "local", student_info
+            query_content, report_content, raw_data, get_model_provider(), student_info
         )
 
         total_time = time.time() - start_time

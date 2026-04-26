@@ -19,8 +19,10 @@ AIGym - 健身动作识别核心协调类
 import cv2
 import os
 import logging
+import numpy as np
 from ultralytics.solutions.solutions import BaseSolution
 from ultralytics.utils.plotting import Annotator
+from function import calculate_angle
 import traceback
 
 # 导入各运动类型的跟踪器类
@@ -128,6 +130,28 @@ class AIGym(BaseSolution):
         self.thresholds = self.tracker.thresholds
         self.FEEDBACK_ID_MAP = self.tracker.FEEDBACK_ID_MAP
 
+    @staticmethod
+    def _point_xy(point):
+        point_array = np.asarray(point[:2], dtype=float)
+        return int(point_array[0]), int(point_array[1])
+
+    def _estimate_pose_angle(self, *kpts):
+        return calculate_angle(*[np.asarray(kpt[:2], dtype=float) for kpt in kpts])
+
+    def _draw_specific_points(self, im0, keypoints, keypoint_indices, radius):
+        points = []
+        for idx in keypoint_indices:
+            if int(idx) >= len(keypoints):
+                continue
+            x, y = self._point_xy(keypoints[int(idx)])
+            points.append((x, y))
+            cv2.circle(im0, (x, y), radius, (0, 255, 255), -1)
+
+        for start, end in zip(points, points[1:]):
+            cv2.line(im0, start, end, (0, 255, 255), max(1, self.lw))
+
+        return im0
+
     def monitor(self, im0):
         """
         处理单帧图像，进行姿态估计和动作识别。
@@ -178,9 +202,9 @@ class AIGym(BaseSolution):
                 # 提取指定的关键点坐标
                 kpts = [k[int(self.kpts[i])].cpu() for i in range(3)]
                 # 估计姿态角度
-                self.angle = self.annotator.estimate_pose_angle(*kpts)
+                self.angle = self._estimate_pose_angle(*kpts)
                 # 绘制关键点
-                im0 = self.annotator.draw_specific_points(k, self.kpts, radius=self.lw * 3)
+                im0 = self._draw_specific_points(im0, k, self.kpts, radius=self.lw * 3)
             except Exception as e:
                 logger.error(f"关键点处理错误: {e}")
                 logger.error(traceback.format_exc())
