@@ -16,6 +16,7 @@ import time
 import sqlite3
 import tempfile
 import logging
+import json
 from typing import Dict, List, Optional
 
 import requests
@@ -48,10 +49,8 @@ AVAILABLE_MODELS = [
     ).split(",")
     if item.strip()
 ]
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "100"))  # 限制输出长度，加快推理
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "256"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS")) if os.getenv("MAX_TOKENS") else None
 TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "32"))
 LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "true").lower() == "true"
 LOAD_IN_8BIT = os.getenv("LOAD_IN_8BIT", "false").lower() == "true"
@@ -120,15 +119,24 @@ class LocalLLM:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
         # 配置量化
+        model_config_path = os.path.join(MODEL_PATH, "config.json")
+        model_has_quantization_config = False
+        if os.path.exists(model_config_path):
+            try:
+                with open(model_config_path, "r", encoding="utf-8") as f:
+                    model_has_quantization_config = "quantization_config" in json.load(f)
+            except Exception:
+                model_has_quantization_config = False
+
         quantization_config = None
-        if LOAD_IN_4BIT:
+        if LOAD_IN_4BIT and not model_has_quantization_config:
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_use_double_quant=True
             )
-        elif LOAD_IN_8BIT:
+        elif LOAD_IN_8BIT and not model_has_quantization_config:
             quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
         # 加载模型
@@ -138,7 +146,10 @@ class LocalLLM:
         }
 
         # 设备映射策略
-        if USE_CPU_OFFLOAD:
+        if LOAD_IN_4BIT and torch.cuda.is_available() and not USE_CPU_OFFLOAD:
+            # bitsandbytes 4-bit models cannot be split to CPU/disk by device_map="auto".
+            model_kwargs["device_map"] = {"": 0}
+        elif USE_CPU_OFFLOAD:
             # CPU 卸载模式：部分层放到 CPU，降低显存占用
             model_kwargs["device_map"] = "auto"
             model_kwargs["max_memory"] = {0: "6GB", "cpu": "8GB"}  # 限制 GPU 显存使用
@@ -150,6 +161,7 @@ class LocalLLM:
         else:
             model_kwargs["torch_dtype"] = torch.float16
 
+        print(f"Device map: {model_kwargs.get('device_map')}")
         self._model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
 
         # 尝试启用 BetterTransformer 加速（Windows 兼容）
@@ -200,7 +212,7 @@ class LocalLLM:
         with torch.no_grad():
             outputs = self._model.generate(
                 **inputs,
-                max_new_tokens=max_tokens,
+                max_new_tokens=max_tokens or MAX_TOKENS,
                 do_sample=False,  # 贪婪解码，更快
                 pad_token_id=self._tokenizer.pad_token_id,
                 eos_token_id=self._tokenizer.eos_token_id,
@@ -251,6 +263,7 @@ class OllamaLLM:
         self.model = model or OLLAMA_MODEL
 
     def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
+        start_time = time.time()
         options = {
             "temperature": temperature or TEMPERATURE,
         }
@@ -272,6 +285,17 @@ class OllamaLLM:
         )
         response.raise_for_status()
         data = response.json()
+        total_time = time.time() - start_time
+        eval_count = data.get("eval_count", 0) or 0
+        eval_duration_sec = (data.get("eval_duration", 0) or 0) / 1_000_000_000
+        tokens_per_sec = eval_count / eval_duration_sec if eval_duration_sec > 0 else 0
+        logger.info(
+            "[性能] Ollama 推理耗时: %.2fs, 总耗时: %.2fs, 生成 token 数: %s, 速度: %.2f tok/s",
+            eval_duration_sec,
+            total_time,
+            eval_count,
+            tokens_per_sec
+        )
         message = data.get("message", {})
         content = message.get("content", "")
         if content:
@@ -297,7 +321,19 @@ def get_model_provider() -> str:
 
 
 def get_available_models() -> List[str]:
-    return AVAILABLE_MODELS
+    models = []
+    for model in AVAILABLE_MODELS:
+        lower = model.lower()
+        if not lower.startswith("local:"):
+            models.append(model)
+            continue
+
+        model_name = model.split(":", 1)[1]
+        model_path = os.path.join(SCRIPT_DIR, "models", model_name)
+        if os.path.exists(model_path):
+            models.append(model)
+
+    return models
 
 
 def _resolve_model_choice(model_name: str) -> tuple[str, str]:
