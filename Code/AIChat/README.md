@@ -6,7 +6,7 @@ AIChat 是体育教学平台的 AI 智能助手服务，提供两个核心功能
 1. **AI 聊天助手**：为学生和教师提供个性化的运动指导和教学建议
 2. **AI 分析报告**：基于学生运动数据生成智能分析报告
 
-**技术方案**：本地部署 Qwen2.5-7B-Instruct + LoRA 微调（体育教学领域）
+**技术方案**：Ollama + 微调后的 Qwen2.5-3B-PE-Sports 模型
 
 ## 系统架构
 
@@ -25,18 +25,14 @@ AIChat 是体育教学平台的 AI 智能助手服务，提供两个核心功能
 │                                │                                    │
 │                                ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                    本地 LLM 推理层                               ││
+│  │                    Ollama 推理服务                               ││
 │  │                                                                  ││
 │  │   ┌────────────────────────────────────────────────────────┐    ││
-│  │   │              Qwen2.5-7B-PE-Sports                        │    ││
+│  │   │              qwen2.5-pe-sports                          │    ││
 │  │   │         (微调后的体育教学专用模型)                        │    ││
-│  │   │                                                          │    ││
-│  │   │   Base: Qwen2.5-7B-Instruct                              │    ││
-│  │   │   + LoRA Adapter (体育教学领域微调)                       │    ││
 │  │   └────────────────────────────────────────────────────────┘    ││
 │  │                                                                  ││
-│  │   推理后端: Transformers (4-bit 量化)                           ││
-│  │   显存占用: ~5GB                                                 ││
+│  │   服务地址: http://localhost:11434                              ││
 │  └─────────────────────────────────────────────────────────────────┘│
 │                                │                                    │
 │                                ▼                                    │
@@ -48,49 +44,80 @@ AIChat 是体育教学平台的 AI 智能助手服务，提供两个核心功能
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 快速开始
+## 目录结构
 
-### 1. 环境准备
-
-```bash
-# 激活 conda 环境
-conda activate pe_ai
-
-# 进入 AIChat 目录
-cd Code/AIChat
+```
+Code/AIChat/
+├── chat_module.py          # 聊天核心模块
+├── report_module.py        # 报告生成模块
+├── database.py             # 数据库模块
+├── main.py                 # FastAPI 入口
+├── requirements.txt        # Python 依赖
+├── .gitignore
+├── models/
+│   └── qwen2.5-pe-sports.q4_k_m.gguf  # GGUF 量化模型（~2GB）
+├── ollama/
+│   ├── Modelfile           # Ollama 模型配置
+│   └── README.md           # 导入指南
+└── finetune/
+    ├── dequantize_model.py # 反量化脚本
+    └── ...                 # 其他微调脚本
 ```
 
-### 2. 启动服务
+## 快速开始
+
+### 1. 安装 Ollama
+
+**Windows:**
+访问 https://ollama.com/download 下载 Windows 版本
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+### 2. 导入模型到 Ollama
 
 ```bash
+cd Code/AIChat/ollama
+ollama create qwen2.5-pe-sports -f Modelfile
+```
+
+### 3. 验证模型
+
+```bash
+ollama list
+# 应该看到：
+# NAME                    ID              SIZE    MODIFIED
+# qwen2.5-pe-sports       xxxxx           2.1 GB  x minutes ago
+
+# 测试模型
+ollama run qwen2.5-pe-sports "你好"
+```
+
+### 4. 启动 AIChat 服务
+
+```bash
+conda activate pe_ai
+cd Code/AIChat
 python main.py
 ```
 
 服务将在 `http://localhost:5000` 启动。
 
-### 3. 环境变量（可选）
+### 5. 环境变量（可选）
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `MODEL_PATH` | 自动检测 | 模型路径（优先使用微调模型） |
+| `OLLAMA_BASE_URL` | http://localhost:11434 | Ollama 服务地址 |
+| `OLLAMA_MODEL` | qwen2.5-pe-sports | Ollama 模型名称 |
 | `YOLO_BASE_URL` | http://localhost:8000 | Yolo_backend 服务地址 |
-| `LOAD_IN_4BIT` | true | 推理时使用 4-bit 量化 |
-| `LOAD_IN_8BIT` | false | 推理时使用 8-bit 量化 |
-| `MAX_TOKENS` | 2048 | 最大生成 token 数 |
-| `TEMPERATURE` | 0.7 | 生成温度 |
+| `MAX_TOKENS` | 512 | 最大生成 token 数 |
+| `TEMPERATURE` | 0.9 | 生成温度 |
 
 ## 模型说明
 
-### 模型自动选择
-
-服务启动时会自动检测并选择模型：
-
-1. **优先**：`./models/Qwen2.5-7B-PE-Sports`（微调后的模型）
-2. **回退**：`./models/Qwen/Qwen2___5-7B-Instruct`（基础模型）
-
 ### 微调模型特点
-
-微调后的模型针对体育教学场景优化：
 
 | 场景 | 能力 |
 |------|------|
@@ -98,23 +125,27 @@ python main.py
 | 教师助理 | 班级分析、教学方案设计、学生评估 |
 | 报告生成 | 运动数据解读、个性化建议生成 |
 
+### 模型文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `models/qwen2.5-pe-sports.q4_k_m.gguf` | ~2GB | GGUF 量化模型，用于导入 Ollama |
+| Ollama 内部存储 | ~2GB | 推理时实际使用（由 Ollama 管理） |
+
 ## 核心组件
 
 ### 1. chat_module.py - 聊天核心模块
 
-**LocalLLM 类：**
-- 本地模型加载与推理
-- 支持 4-bit/8-bit 量化
-- ChatML 提示词格式
+**OllamaLLM 类：**
+- 通过 HTTP API 调用 Ollama 服务
+- 自动服务状态检查
 
 **ChatManager 类：**
 - 会话生命周期管理
 - 对话历史持久化
-- 系统提示词管理
 
 ### 2. report_module.py - 报告生成模块
 
-**报告类型：**
 | 类型 | 说明 |
 |------|------|
 | homework_feedback | 作业反馈分析 |
@@ -122,7 +153,6 @@ python main.py
 
 ### 3. database.py - 数据库模块
 
-**SQLite 表结构：**
 - `sessions` - 会话记录
 - `messages` - 消息历史
 - `ai_analysis_reports` - 分析报告
@@ -138,7 +168,7 @@ Content-Type: application/json
 
 {
   "user_id": "student001",
-  "role": "student"  // student 或 teacher
+  "role": "student"
 }
 ```
 
@@ -181,42 +211,6 @@ Content-Type: application/json
 GET /api/analysis/query?student_id=student001
 ```
 
-## 数据库设计
-
-### sessions 表
-
-| 字段 | 类型 | 说明 |
-|-----|------|------|
-| id | INTEGER | 主键 |
-| user_id | TEXT | 用户ID |
-| title | TEXT | 会话标题 |
-| model | TEXT | 使用的模型 |
-| role | TEXT | 用户角色 |
-| created_at | TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | 更新时间 |
-
-### messages 表
-
-| 字段 | 类型 | 说明 |
-|-----|------|------|
-| id | INTEGER | 主键 |
-| session_id | INTEGER | 会话ID |
-| role | TEXT | 角色 |
-| content | TEXT | 消息内容 |
-| timestamp | TIMESTAMP | 时间戳 |
-
-### ai_analysis_reports 表
-
-| 字段 | 类型 | 说明 |
-|-----|------|------|
-| id | INTEGER | 主键 |
-| homework_id | TEXT | 作业ID |
-| student_id | TEXT | 学生ID |
-| analysis_type | TEXT | 分析类型 |
-| report_content | TEXT | 报告内容 |
-| raw_data | TEXT | 原始数据 |
-| created_at | TIMESTAMP | 创建时间 |
-
 ## 与 Yolo_backend 数据交互
 
 AIChat 从 Yolo_backend 获取学生运动数据：
@@ -225,14 +219,6 @@ AIChat 从 Yolo_backend 获取学生运动数据：
 GET http://localhost:8000/api/student/all-records/{student_id}
 ```
 
-**数据流程：**
-1. 接收报告生成请求
-2. 从 Yolo_backend 获取运动数据
-3. 构建提示词（System Prompt + 运动数据）
-4. 调用本地 LLM 生成报告
-5. 保存报告到 SQLite
-6. 返回结果
-
 ## 错误码
 
 | HTTP 状态码 | 错误信息 | 说明 |
@@ -240,36 +226,27 @@ GET http://localhost:8000/api/student/all-records/{student_id}
 | 200 | - | 成功 |
 | 400 | 用户ID不能为空 | 缺少 user_id |
 | 404 | 会话不存在 | session_id 无效 |
-| 500 | 模型加载失败 | LLM 加载异常 |
+| 500 | Ollama 服务不可用 | Ollama 未启动或模型未加载 |
 
-## 微调指南
+## Ollama 常用命令
 
-详细的微调流程请参考 [finetune/README.md](finetune/README.md)。
-
-### 微调流程概览
-
-```
-1. 下载基础模型 → python finetune/download_model.py
-2. 生成训练数据 → python finetune/generate_training_data.py
-3. 运行 LoRA 微调 → python finetune/finetune_lora.py
-4. 合并 LoRA 权重 → python finetune/merge_lora.py
-5. 重启服务 → python main.py（自动使用微调模型）
+```bash
+ollama list                      # 查看已安装的模型
+ollama run qwen2.5-pe-sports     # 运行模型
+ollama show qwen2.5-pe-sports    # 查看模型信息
+ollama rm qwen2.5-pe-sports      # 删除模型
 ```
 
 ## 注意事项
 
-1. **显存需求**：4-bit 量化推理约需 5GB 显存
-2. **首次启动**：模型加载需要 30-60 秒
-3. **并发处理**：建议使用队列处理并发请求
-4. **模型版本**：推荐 Qwen2.5 系列，中文能力强
+1. **Ollama 服务**：确保 Ollama 服务在 11434 端口运行
+2. **模型导入**：首次使用需要将微调模型导入 Ollama
+3. **并发处理**：Ollama 内置请求队列，支持并发
+4. **显存管理**：Ollama 自动管理 GPU 显存
 
 ## 依赖说明
 
-详见 [requirements.txt](requirements.txt)
-
 核心依赖：
-- `transformers` - 模型加载与推理
-- `peft` - LoRA 适配器支持
-- `bitsandbytes` - 量化支持
 - `fastapi` - Web 框架
-- `modelscope` - 模型下载
+- `requests` - HTTP 客户端
+- `uvicorn` - ASGI 服务器

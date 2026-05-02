@@ -2,13 +2,13 @@
 chat_module.py - AI 聊天核心模块
 
 功能：
-1. 本地 LLM 模型加载与推理（Qwen2.5-3B）
+1. Ollama API 调用（使用微调后的 Qwen2.5-3B-PE-Sports 模型）
 2. 会话管理（创建、查询、删除、消息存储）
 3. 会话导出
 
 模型配置：
-- 微调模型: ./models/Qwen2.5-3B-PE-Sports
-- 量化: 4-bit (默认)
+- Ollama 服务地址: http://localhost:11434
+- 模型名称: qwen2.5-pe-sports（需先导入到 Ollama）
 """
 
 import os
@@ -16,7 +16,7 @@ import time
 import sqlite3
 import tempfile
 import logging
-import json
+import requests
 from typing import Dict, List, Optional
 
 import requests
@@ -29,40 +29,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ================= 路径配置 =================
-# 获取当前脚本所在目录，确保无论在哪里运行都使用正确的路径
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# ================= 模型配置 =================
-# 只使用微调模型
-MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "auto").lower()
+# ================= Ollama 配置 =================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
-FINETUNED_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
-BASE_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-Instruct")
-MODEL_PATH = os.getenv("MODEL_PATH", FINETUNED_MODEL_PATH)
-AVAILABLE_MODELS = [
-    item.strip()
-    for item in os.getenv(
-        "AVAILABLE_MODELS",
-        f"ollama:{OLLAMA_MODEL},local:Qwen2.5-3B-PE-Sports,local:Qwen2.5-3B-Instruct"
-    ).split(",")
-    if item.strip()
-]
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "256"))
-TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "32"))
-LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "true").lower() == "true"
-LOAD_IN_8BIT = os.getenv("LOAD_IN_8BIT", "false").lower() == "true"
-USE_CPU_OFFLOAD = os.getenv("USE_CPU_OFFLOAD", "false").lower() == "true"
-MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", "1024"))  # 减少输入长度
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-pe-sports")
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "512"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.9"))
 
 # ================= 系统提示词 =================
 SYSTEM_PROMPTS = {
     "student_coach": """你是大学体育平台的AI私教。学生数据：{context}
 
 回答要求：
-- 简洁专业，不超过80字
+- 简洁专业，不超过300字
 - 直接回答问题，不要废话
 - 针对学生具体情况给出建议
 """,
@@ -70,28 +48,26 @@ SYSTEM_PROMPTS = {
     "teacher_assistant": """你是大学体育平台的AI教学助理。
 
 回答要求：
-- 专业简洁，不超过100字
+- 专业简洁，不超过300字
 - 直接回答问题，不要废话
 - 提供具体数据或建议
 """
 }
 
 
-# ================= 本地 LLM 类 =================
+# ================= Ollama LLM 类 =================
 
-class LocalLLM:
+class OllamaLLM:
     """
-    本地 LLM 管理类，使用 Transformers 后端。
+    Ollama LLM 管理类，通过 HTTP API 调用 Ollama 服务。
 
     特性：
-    - 4-bit/8-bit 量化支持
-    - 自动设备映射
-    - ChatML 提示词格式
+    - 无需本地加载模型，由 Ollama 服务管理
+    - 支持流式和非流式响应
+    - 自动处理 ChatML 格式
     """
 
     _instance = None
-    _model = None
-    _tokenizer = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -99,212 +75,71 @@ class LocalLLM:
         return cls._instance
 
     def __init__(self):
-        if self._model is not None:
-            return
-        self._load_model()
+        self._check_ollama_service()
 
-    def _load_model(self):
-        """加载本地模型。"""
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-
-        print(f"Loading local model: {MODEL_PATH}")
-        print(f"Quantization: 4-bit={LOAD_IN_4BIT}, 8-bit={LOAD_IN_8BIT}, CPU_offload={USE_CPU_OFFLOAD}")
-
-        # 加载 tokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_PATH, trust_remote_code=True, use_fast=False
-        )
-        if self._tokenizer.pad_token is None:
-            self._tokenizer.pad_token = self._tokenizer.eos_token
-
-        # 配置量化
-        model_config_path = os.path.join(MODEL_PATH, "config.json")
-        model_has_quantization_config = False
-        if os.path.exists(model_config_path):
-            try:
-                with open(model_config_path, "r", encoding="utf-8") as f:
-                    model_has_quantization_config = "quantization_config" in json.load(f)
-            except Exception:
-                model_has_quantization_config = False
-
-        quantization_config = None
-        if LOAD_IN_4BIT and not model_has_quantization_config:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True
-            )
-        elif LOAD_IN_8BIT and not model_has_quantization_config:
-            quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-
-        # 加载模型
-        model_kwargs = {
-            "pretrained_model_name_or_path": MODEL_PATH,
-            "trust_remote_code": True,
-        }
-
-        # 设备映射策略
-        if LOAD_IN_4BIT and torch.cuda.is_available() and not USE_CPU_OFFLOAD:
-            # bitsandbytes 4-bit models cannot be split to CPU/disk by device_map="auto".
-            model_kwargs["device_map"] = {"": 0}
-        elif USE_CPU_OFFLOAD:
-            # CPU 卸载模式：部分层放到 CPU，降低显存占用
-            model_kwargs["device_map"] = "auto"
-            model_kwargs["max_memory"] = {0: "6GB", "cpu": "8GB"}  # 限制 GPU 显存使用
-        else:
-            model_kwargs["device_map"] = "auto"
-
-        if quantization_config:
-            model_kwargs["quantization_config"] = quantization_config
-        else:
-            model_kwargs["torch_dtype"] = torch.float16
-
-        print(f"Device map: {model_kwargs.get('device_map')}")
-        self._model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
-
-        # 尝试启用 BetterTransformer 加速（Windows 兼容）
+    def _check_ollama_service(self):
+        """检查 Ollama 服务是否可用。"""
         try:
-            self._model = self._model.to_bettertransformer()
-            logger.info("BetterTransformer 加速已启用")
+            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                model_names = [m.get("name") for m in models]
+                # 检查模型是否存在（支持带或不带 :latest 后缀）
+                model_found = any(
+                    name == OLLAMA_MODEL or name.startswith(f"{OLLAMA_MODEL}:")
+                    for name in model_names
+                )
+                logger.info(f"Ollama 服务可用，已加载模型: {model_names}")
+                if not model_found:
+                    logger.warning(f"模型 {OLLAMA_MODEL} 未在 Ollama 中找到，请先导入模型")
+            else:
+                logger.warning(f"Ollama 服务响应异常: {response.status_code}")
         except Exception as e:
-            logger.warning(f"BetterTransformer 不可用: {e}")
-
-        self._model.eval()
-
-        # 打印模型信息
-        if torch.cuda.is_available():
-            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            allocated = torch.cuda.memory_allocated(0) / 1024**3
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
-            print(f"GPU Memory: {gpu_memory:.1f} GB total, {allocated:.1f} GB used")
-
-        print("Model loaded successfully")
+            logger.warning(f"无法连接 Ollama 服务 ({OLLAMA_BASE_URL}): {e}")
 
     def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
         """生成回复。"""
-        import torch
-        import time
-
         start_time = time.time()
         temperature = temperature or TEMPERATURE
 
-        prompt = self._build_prompt(messages)
-        t1 = time.time()
-
-        # 截断输入，避免过长导致显存溢出
-        inputs = self._tokenizer(
-            prompt,
-            return_tensors="pt",
-            return_attention_mask=True,
-            truncation=True,
-            max_length=MAX_INPUT_LENGTH
-        )
-        inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
-
-        t2 = time.time()
-        logger.info(f"[性能] Tokenize 耗时: {t2-t1:.2f}s, 输入长度: {inputs['input_ids'].shape[1]}")
-
-        # 推理前清理缓存
-        torch.cuda.empty_cache()
-
-        with torch.no_grad():
-            outputs = self._model.generate(
-                **inputs,
-                max_new_tokens=max_tokens or MAX_TOKENS,
-                do_sample=False,  # 贪婪解码，更快
-                pad_token_id=self._tokenizer.pad_token_id,
-                eos_token_id=self._tokenizer.eos_token_id,
-                repetition_penalty=1.05,
-                use_cache=True
+        # 调用 Ollama API
+        try:
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "temperature": temperature
+                    }
+                },
+                timeout=60
             )
 
-        t3 = time.time()
-        logger.info(f"[性能] 模型推理耗时: {t3-t2:.2f}s, 生成 token 数: {outputs.shape[1] - inputs['input_ids'].shape[1]}")
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get("message", {}).get("content", "")
+                total_time = time.time() - start_time
+                logger.info(f"[性能] Ollama 推理耗时: {total_time:.2f}s")
+                return content.strip()
+            else:
+                error_msg = f"Ollama API 错误: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
 
-        new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
-        response = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-        # 推理后清理缓存
-        torch.cuda.empty_cache()
-
-        total_time = time.time() - start_time
-        logger.info(f"[性能] predict 总耗时: {total_time:.2f}s")
-
-        return response.strip()
-
-    def _build_prompt(self, messages: List[Dict]) -> str:
-        """构建 ChatML 格式提示词。"""
-        prompt_parts = []
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-
-            if role == "system":
-                prompt_parts.append(f"<|im_start|>system\n{content}<|im_end|>\n")
-            elif role == "user":
-                prompt_parts.append(f"<|im_start|>user\n{content}<|im_end|>\n")
-            elif role == "assistant":
-                prompt_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>\n")
-
-        prompt_parts.append("<|im_start|>assistant\n")
-
-        return "".join(prompt_parts)
+        except requests.exceptions.Timeout:
+            return "Error: Ollama 请求超时"
+        except requests.exceptions.ConnectionError:
+            return "Error: 无法连接 Ollama 服务"
+        except Exception as e:
+            logger.error(f"Ollama 推理异常: {e}")
+            return f"Error: {str(e)}"
 
 
 # 全局 LLM 实例
-class OllamaLLM:
-    """Ollama HTTP API client."""
-
-    def __init__(self, model: str = None):
-        self.base_url = OLLAMA_BASE_URL.rstrip("/")
-        self.model = model or OLLAMA_MODEL
-
-    def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
-        start_time = time.time()
-        options = {
-            "temperature": temperature or TEMPERATURE,
-        }
-        if max_tokens is not None:
-            options["num_predict"] = max_tokens
-        elif MAX_TOKENS is not None:
-            options["num_predict"] = MAX_TOKENS
-
-        response = requests.post(
-            f"{self.base_url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": messages,
-                "stream": False,
-                "think": False,
-                "options": options,
-            },
-            timeout=120,
-        )
-        response.raise_for_status()
-        data = response.json()
-        total_time = time.time() - start_time
-        eval_count = data.get("eval_count", 0) or 0
-        eval_duration_sec = (data.get("eval_duration", 0) or 0) / 1_000_000_000
-        tokens_per_sec = eval_count / eval_duration_sec if eval_duration_sec > 0 else 0
-        logger.info(
-            "[性能] Ollama 推理耗时: %.2fs, 总耗时: %.2fs, 生成 token 数: %s, 速度: %.2f tok/s",
-            eval_duration_sec,
-            total_time,
-            eval_count,
-            tokens_per_sec
-        )
-        message = data.get("message", {})
-        content = message.get("content", "")
-        if content:
-            return content.strip()
-        return message.get("thinking", "").strip()
-
-
-_llm_instance = None
-
+_llm_instance: Optional[OllamaLLM] = None
 
 def _ollama_available() -> bool:
     try:
@@ -335,39 +170,21 @@ def get_available_models() -> List[str]:
 
     return models
 
-
-def _resolve_model_choice(model_name: str) -> tuple[str, str]:
-    if not model_name:
-        provider = get_model_provider()
-        return provider, OLLAMA_MODEL if provider == "ollama" else MODEL_PATH
-
-    value = model_name.strip()
-    lower = value.lower()
-    if lower.startswith("ollama:"):
-        return "ollama", value.split(":", 1)[1]
-    if lower == "ollama":
-        return "ollama", OLLAMA_MODEL
-    if lower.startswith("local:") or "qwen" in lower:
-        return "local", MODEL_PATH
-    return get_model_provider(), value
-
-
-def get_llm():
+def get_llm() -> OllamaLLM:
     """获取全局 LLM 实例（延迟加载）。"""
     global _llm_instance
     if _llm_instance is None:
-        if get_model_provider() == "ollama":
-            _llm_instance = OllamaLLM()
-        else:
-            _llm_instance = LocalLLM()
+        _llm_instance = OllamaLLM()
     return _llm_instance
 
 
-def model_predict(model_name: str, messages: List[Dict], max_tokens: int = None) -> str:
-    """调用本地模型生成回复。"""
-    provider, resolved_model = _resolve_model_choice(model_name)
-    llm = OllamaLLM(resolved_model) if provider == "ollama" else LocalLLM()
-    return llm.predict(messages, max_tokens=max_tokens)
+def model_predict(model_name: str, messages: List[Dict]) -> str:
+    """调用 Ollama 模型生成回复。"""
+    try:
+        llm = get_llm()
+        return llm.predict(messages)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 # ================= 会话管理类 =================

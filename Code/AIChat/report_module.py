@@ -41,11 +41,11 @@ YOLO_BASE_URL = os.getenv("YOLO_BASE_URL", "http://localhost:8000")
 
 # ================= AI 分析提示词模板 =================
 AI_PROMPTS = {
-    "homework_feedback": """你是体育教练，根据数据给出评价和建议（120字内）。
+    "homework_feedback": """你是体育教练，根据数据给出评价和建议（300字以内）。
 数据：{student_data}
 要求：指出主要错误，给出改进方法。""",
 
-    "personalized_tips": """你是体育教练，根据数据给出训练建议（120字内）。
+    "personalized_tips": """你是体育教练，根据数据给出训练建议（300字以内）。
 信息：{student_info}
 数据：{student_data}
 要求：分析问题，给出建议。"""

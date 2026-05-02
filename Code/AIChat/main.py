@@ -1,5 +1,5 @@
 """
-AIChat - AI 聊天助手服务主入口 (本地模型版)
+AIChat - AI 聊天助手服务主入口 (Ollama 版)
 
 该模块是 AI 聊天服务的 FastAPI 应用入口，提供：
 1. 会话管理 API：创建、查询、删除聊天会话
@@ -9,13 +9,12 @@ AIChat - AI 聊天助手服务主入口 (本地模型版)
 服务架构：
 - 端口：5000
 - 数据库：SQLite (chat_history.db)
-- 依赖服务：Yolo_backend (端口 8000) - 获取学生运动数据
-- 本地模型：Qwen2.5-3B-Instruct + LoRA 微调 (自动检测)
+- 依赖服务：
+  - Yolo_backend (端口 8000) - 获取学生运动数据
+  - Ollama (端口 11434) - LLM 推理服务
 
 模型配置：
-- 优先使用微调模型: ./models/Qwen2.5-3B-PE-Sports
-- 回退基础模型: ./models/Qwen2.5-3B-Instruct
-- 默认量化: 4-bit (可通过环境变量配置)
+- Ollama 模型: qwen2.5-pe-sports（需先导入微调模型）
 
 API 接口设计：
 - /api/sessions: 会话 CRUD 操作
@@ -26,6 +25,7 @@ API 接口设计：
 import os
 import json
 import logging
+import requests
 from typing import Dict, List
 
 import uvicorn
@@ -87,12 +87,11 @@ init_db()
 
 @app.on_event("startup")
 async def startup_event():
-    """应用启动时预加载 LLM 模型。"""
-    from chat_module import get_llm, get_model_provider
-    logger.info("预加载 LLM 模型...")
-    logger.info(f"startup provider={get_model_provider()}")
-    get_llm()
-    logger.info("LLM 模型加载完成")
+    """应用启动时检查 Ollama 服务状态。"""
+    from chat_module import get_llm
+    logger.info("检查 Ollama 服务状态...")
+    get_llm()  # 这会触发服务检查
+    logger.info("Ollama 服务检查完成")
 
 # ================= 会话管理 API =================
 
@@ -475,36 +474,31 @@ async def export_session(session_id: int):
 @app.get('/api/models')
 async def list_models():
     """
-    获取当前使用的本地模型信息。
+    获取当前使用的 Ollama 模型信息。
 
     返回:
         JSONResponse: {
             "success": true,
             "data": {
-                "model": "local",
-                "model_path": "./models/Qwen2.5-7B-PE-Sports",
-                "is_finetuned": true,
-                "quantization": "4-bit"
+                "backend": "ollama",
+                "ollama_url": "http://localhost:11434",
+                "model": "qwen2.5-pe-sports"
             }
         }
     """
     try:
-        import os
-        from chat_module import (
-            BASE_MODEL_PATH,
-            FINETUNED_MODEL_PATH,
-            LOAD_IN_4BIT,
-            LOAD_IN_8BIT,
-            MODEL_PATH,
-            OLLAMA_BASE_URL,
-            OLLAMA_MODEL,
-            get_available_models,
-            get_model_provider,
-        )
+        from chat_module import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_TOKENS, TEMPERATURE
 
-        provider = get_model_provider()
-        is_finetuned = os.path.exists(FINETUNED_MODEL_PATH)
-        quantization = "4-bit" if LOAD_IN_4BIT else ("8-bit" if LOAD_IN_8BIT else "fp16")
+        # 尝试获取 Ollama 服务中的模型列表
+        try:
+            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                model_info = next((m for m in models if m.get("name") == OLLAMA_MODEL), None)
+            else:
+                model_info = None
+        except:
+            model_info = None
 
         data = {
             "model": provider,
@@ -525,7 +519,14 @@ async def list_models():
 
         return JSONResponse({
             "success": True,
-            "data": data
+            "data": {
+                "backend": "ollama",
+                "ollama_url": OLLAMA_BASE_URL,
+                "model": OLLAMA_MODEL,
+                "max_tokens": MAX_TOKENS,
+                "temperature": TEMPERATURE,
+                "model_info": model_info
+            }
         })
     except Exception as e:
         return JSONResponse({
