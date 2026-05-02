@@ -1,27 +1,55 @@
 import request from './request';
 
-const splitFields = (raw) => (raw || '').split('\t\r');
+const getToken = () => {
+	const token = uni.getStorageSync('token');
+	if (token) return token;
+	const user = uni.getStorageSync('user') || {};
+	return user.token || '';
+};
 
 export const getStudentAssignments = async (studentId) => {
 	try {
+		const token = getToken();
 		const courseResp = await request.post('/Course_student/get_course_id_by_student', {
-			first: studentId
+			first: studentId,
+			second: token
 		});
 
 		if (!courseResp.data || !courseResp.data.data || courseResp.data.data === 'NULL') {
 			return { success: true, data: [] };
 		}
 
-		const courseIds = courseResp.data.data.split('\t\r');
+		const courseIds = courseResp.data.data.split('\t\r').filter(Boolean);
 		const allAssignments = [];
+		const courseNameMap = {};
 
 		for (const courseId of courseIds) {
+			if (!courseNameMap[courseId]) {
+				try {
+					const courseDetailResp = await request.post('/Course/get_info_by_course_id', {
+						first: courseId,
+						second: token
+					});
+					if (courseDetailResp.data?.success && courseDetailResp.data?.data) {
+						const courseParts = courseDetailResp.data.data.split('\t\r');
+						courseNameMap[courseId] = courseParts[1] || '';
+					} else {
+						courseNameMap[courseId] = '';
+					}
+				} catch (e) {
+					courseNameMap[courseId] = '';
+				}
+			}
+
 			const hwResp = await request.post('/Homework/get_homework_id_by_course', {
-				first: courseId
+				first: '0',
+				second: studentId,
+				third: token,
+				fourth: courseId
 			});
 
 			if (hwResp.data && hwResp.data.data && hwResp.data.data !== 'NULL') {
-				const hwIds = hwResp.data.data.split('\t\r');
+				const hwIds = hwResp.data.data.split('\t\r').filter(Boolean);
 				for (const hwId of hwIds) {
 					const detailResp = await request.post('/Homework/get_info_by_homework_id', {
 						first: courseId,
@@ -31,8 +59,9 @@ export const getStudentAssignments = async (studentId) => {
 					if (detailResp.data && detailResp.data.data) {
 						const parts = detailResp.data.data.split('\t\r');
 						allAssignments.push({
-							id: parseInt(hwId.trim()),
-							courseId: courseId,
+							id: parseInt(hwId.trim(), 10),
+							courseId,
+							courseName: courseNameMap[courseId] || '',
 							title: parts[0] || '',
 							description: parts[1] || '',
 							deadline: parts[2] || '',
@@ -62,8 +91,8 @@ export const getAssignmentDetail = async (homeworkId, courseId) => {
 			return {
 				success: true,
 				data: {
-					id: parseInt(homeworkId.trim()),
-					courseId: courseId,
+					id: parseInt(homeworkId, 10),
+					courseId,
 					title: parts[0] || '',
 					description: parts[1] || '',
 					deadline: parts[2] || '',
@@ -78,16 +107,18 @@ export const getAssignmentDetail = async (homeworkId, courseId) => {
 	}
 };
 
-export const submitHomework = async (homeworkId, studentId, videoUrl) => {
+export const submitHomework = async (homeworkId, studentId, videoUrl, courseId = '') => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Homework/submit_homework', {
 			first: studentId,
-			third: '',
-			fourth: homeworkId,
+			second: token,
+			third: courseId,
+			fourth: String(homeworkId),
 			fifth: videoUrl
 		});
 
-		if (response.data && response.data.data) {
+		if (response.data && response.data.success) {
 			return { success: true, data: response.data.data };
 		}
 		return { success: false, message: '提交失败' };
@@ -99,8 +130,12 @@ export const submitHomework = async (homeworkId, studentId, videoUrl) => {
 
 export const getSubmissionHistory = async (homeworkId, studentId) => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Homework/get_submit_id_by_student', {
-			fourth: homeworkId,
+			first: '0',
+			second: studentId,
+			third: token,
+			fourth: String(homeworkId),
 			fifth: studentId
 		});
 
@@ -108,20 +143,23 @@ export const getSubmissionHistory = async (homeworkId, studentId) => {
 			return { success: true, data: [] };
 		}
 
-		const submitIds = response.data.data.split('\t\r');
+		const submitIds = response.data.data.split('\t\r').filter(Boolean);
 		const submissions = [];
 
 		for (const submitId of submitIds) {
 			const detailResp = await request.post('/Homework/get_submit_info', {
+				first: '0',
+				second: studentId,
+				third: token,
 				fourth: submitId
 			});
 
 			if (detailResp.data && detailResp.data.data) {
 				const parts = detailResp.data.data.split('\t\r');
 				submissions.push({
-					id: parseInt(submitId.trim()),
+					id: parseInt(submitId, 10),
 					videoUrl: parts[0] || '',
-					score: parts[1] || null,
+					score: parts[1] ? parseFloat(parts[1]) : null,
 					aiFeedback: parts[2] || '',
 					teacherFeedback: parts[3] || '',
 					createTime: parts[4] || ''
@@ -136,10 +174,14 @@ export const getSubmissionHistory = async (homeworkId, studentId) => {
 	}
 };
 
-export const getAIFeedback = async (submissionId) => {
+export const getAIFeedback = async (submissionId, studentId = '') => {
 	try {
+		const token = getToken();
 		const response = await request.post('/Homework/get_submit_info', {
-			fourth: submissionId
+			first: '0',
+			second: studentId,
+			third: token,
+			fourth: String(submissionId)
 		});
 
 		if (response.data && response.data.data) {
@@ -148,7 +190,7 @@ export const getAIFeedback = async (submissionId) => {
 				success: true,
 				data: {
 					videoUrl: parts[0] || '',
-					score: parts[1] || null,
+					score: parts[1] ? parseFloat(parts[1]) : null,
 					aiFeedback: parts[2] || '',
 					teacherFeedback: parts[3] || '',
 					createTime: parts[4] || ''

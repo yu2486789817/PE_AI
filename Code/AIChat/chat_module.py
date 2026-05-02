@@ -18,6 +18,8 @@ import tempfile
 import logging
 import requests
 from typing import Dict, List, Optional
+
+import requests
 from database import init_db, DB_PATH
 
 # ================= 日志配置 =================
@@ -98,7 +100,6 @@ class OllamaLLM:
     def predict(self, messages: List[Dict], max_tokens: int = None, temperature: float = None) -> str:
         """生成回复。"""
         start_time = time.time()
-        max_tokens = max_tokens or MAX_TOKENS
         temperature = temperature or TEMPERATURE
 
         # 调用 Ollama API
@@ -140,6 +141,34 @@ class OllamaLLM:
 # 全局 LLM 实例
 _llm_instance: Optional[OllamaLLM] = None
 
+def _ollama_available() -> bool:
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=2)
+        return response.ok
+    except requests.RequestException:
+        return False
+
+
+def get_model_provider() -> str:
+    if MODEL_PROVIDER in ("local", "ollama"):
+        return MODEL_PROVIDER
+    return "ollama" if _ollama_available() else "local"
+
+
+def get_available_models() -> List[str]:
+    models = []
+    for model in AVAILABLE_MODELS:
+        lower = model.lower()
+        if not lower.startswith("local:"):
+            models.append(model)
+            continue
+
+        model_name = model.split(":", 1)[1]
+        model_path = os.path.join(SCRIPT_DIR, "models", model_name)
+        if os.path.exists(model_path):
+            models.append(model)
+
+    return models
 
 def get_llm() -> OllamaLLM:
     """获取全局 LLM 实例（延迟加载）。"""
@@ -174,7 +203,7 @@ class ChatManager:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO sessions (user_id, title, model, role) VALUES (?, ?, ?, ?)",
-            (user_id, title, model_name or "local", role)
+            (user_id, title, model_name or get_model_provider(), role)
         )
         session_id = cursor.lastrowid
         conn.commit()
@@ -265,7 +294,7 @@ class ChatManager:
         try:
             prompt = f"Please generate a very short title (no more than 6 characters, no punctuation) based on the user's message:\n\"{user_input}\""
             messages = [{"role": "user", "content": prompt}]
-            title = model_predict(None, messages)
+            title = model_predict(None, messages, max_tokens=TITLE_MAX_TOKENS)
             title = title.strip(' " "\'\n').replace('Title:', '').replace('Title：', '')
             if len(title) > 10:
                 title = title[:10]
@@ -310,7 +339,7 @@ class ChatManager:
 
         cursor.execute(
             "INSERT INTO messages (session_id, role, content, model) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, model or "local")
+            (session_id, role, content, model or get_model_provider())
         )
 
         cursor.execute(

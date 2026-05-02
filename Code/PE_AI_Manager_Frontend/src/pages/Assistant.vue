@@ -37,7 +37,7 @@
             <div class="flex items-center justify-between">
               <div class="flex-1 min-w-0">
                 <div class="font-bold text-slate-900 text-sm truncate">{{ session.title }}</div>
-                <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{{ session.model }}</div>
+                <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{{ displayModelLabel(session.model) }}</div>
               </div>
               <button @click.stop="deleteSession(session.session_id)"
                       class="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
@@ -69,8 +69,8 @@
           <select v-model="selectedModel"
                   @change="changeModel"
                   class="px-3 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all">
-            <option v-for="model in availableModels" :key="model" :value="model">
-              {{ model }}
+            <option v-for="model in availableModels" :key="model.value" :value="model.value">
+              {{ model.label }}
             </option>
           </select>
         </div>
@@ -114,8 +114,8 @@
                            : 'bg-white text-slate-800 border-slate-100 rounded-tl-none']">
               <div v-if="message.role === 'user'" class="whitespace-pre-wrap font-medium leading-relaxed">{{ message.content }}</div>
               <div v-else class="prose prose-slate prose-sm max-w-none prose-headings:font-bold prose-a:text-blue-600" v-html="renderMarkdown(message.content)"></div>
-              <div v-if="message.model" class="text-[10px] mt-3 font-bold uppercase tracking-widest opacity-60">
-                AI ENGINE: {{ message.model }}
+              <div v-if="message.role !== 'user' && message.model" class="text-[10px] mt-3 font-bold uppercase tracking-widest opacity-60">
+                AI ENGINE: {{ displayModelLabel(message.model) }}
               </div>
             </div>
           </div>
@@ -166,8 +166,60 @@ const loadingSessions = ref(false)
 const loadingMessages = ref(false)
 const sendingMessage = ref(false)
 const generatingReport = ref(false)
-const selectedModel = ref('Qwen')
-const availableModels = ref(['Qwen', 'ERNIE', 'Moonshot'])
+const selectedModel = ref('ollama:gemma4')
+const availableModels = ref([])
+
+const formatModelLabel = (provider, modelName) => {
+  if (!provider && !modelName) return ''
+  if (provider === 'ollama' && modelName) {
+    return `ollama:${modelName.split(':')[0]}`
+  }
+  if (provider && modelName && provider !== modelName) {
+    return `${provider}:${modelName}`
+  }
+  return modelName || provider
+}
+
+const normalizeModels = (modelsData) => {
+  if (Array.isArray(modelsData)) {
+    return modelsData
+      .filter(value => typeof value === 'string' && value.trim())
+      .map(value => ({ label: value, value }))
+  }
+
+  if (!modelsData || typeof modelsData !== 'object') {
+    return []
+  }
+
+  if (Array.isArray(modelsData.available_models)) {
+    return modelsData.available_models
+      .filter(value => typeof value === 'string' && value.trim())
+      .map(value => ({ label: value, value }))
+  }
+
+  const combinedLabel = formatModelLabel(modelsData.model, modelsData.ollama_model)
+  const optionLabels = [combinedLabel, modelsData.model]
+    .filter(value => typeof value === 'string' && value.trim())
+
+  return [...new Set(optionLabels)].map(value => ({ label: value, value }))
+}
+
+const normalizeSelectedModel = (modelValue) => {
+  if (modelValue && availableModels.value.some(model => model.value === modelValue)) {
+    return modelValue
+  }
+  if (modelValue === 'ollama') {
+    return availableModels.value[0]?.value || 'ollama:gemma4'
+  }
+  return availableModels.value[0]?.value || modelValue || 'ollama:gemma4'
+}
+
+const displayModelLabel = (modelValue) => {
+  if (modelValue === 'ollama') {
+    return availableModels.value[0]?.label || 'ollama:gemma4'
+  }
+  return modelValue || ''
+}
 
 // Markdown渲染函数
 const renderMarkdown = (content) => {
@@ -232,7 +284,7 @@ const switchSession = async (sessionId) => {
       currentSessionId.value = sessionId
       currentSession.value = result.data
       messages.value = result.data.messages || []
-      selectedModel.value = result.data.model || 'Qwen'
+      selectedModel.value = normalizeSelectedModel(result.data.model)
 
       // 滚动到底部
       scrollToBottom()
@@ -436,7 +488,16 @@ onMounted(async () => {
     // 加载模型列表
     const modelsResult = await aiChat.getModels()
     if (modelsResult.success && modelsResult.data) {
-      availableModels.value = modelsResult.data
+      availableModels.value = normalizeModels(modelsResult.data)
+      if (!availableModels.value.length) {
+        availableModels.value = [{ label: 'ollama:gemma4', value: 'ollama:gemma4' }]
+      }
+      if (!availableModels.value.some(model => model.value === selectedModel.value)) {
+        selectedModel.value = availableModels.value[0].value
+      }
+    } else {
+      availableModels.value = [{ label: 'ollama:gemma4', value: 'ollama:gemma4' }]
+      selectedModel.value = 'ollama:gemma4'
     }
 
     // 加载会话列表
@@ -484,5 +545,14 @@ onMounted(async () => {
 /* 文本域自动调整高度 */
 textarea {
   overflow-y: auto;
+}
+
+.prose :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  display: block;
 }
 </style>

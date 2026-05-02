@@ -39,6 +39,10 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/chat/, '')
+      },
+      '/Teaching-video': {
+        target: 'http://localhost:5001',
+        changeOrigin: true
       }
     }
   }

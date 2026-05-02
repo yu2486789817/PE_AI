@@ -350,6 +350,13 @@ const saveGrade = async (sub) => {
     return
   }
 
+  // 前端校验分数范围
+  const score = parseInt(editingScore.value)
+  if (isNaN(score) || score < 0 || score > 100) {
+    alert('分数必须在 0-100 之间')
+    return
+  }
+
   try {
     const resp = await apiClient.post('/Homework/teacher_test', {
       First: teacherId, Second: jwt, Third: courseId, Fourth: assignmentId,
@@ -364,7 +371,17 @@ const saveGrade = async (sub) => {
       editingStudentId.value = null
       await fetchData()
     } else {
-      alert('保存失败')
+      // 根据后端返回的错误码显示友好提示
+      const errorCode = resp.data.code || resp.data[0]
+      let errorMsg = '保存失败'
+      if (errorCode === -10) {
+        errorMsg = '参数错误：' + (resp.data.message || '分数必须在 0-100 之间')
+      } else if (errorCode === -21) {
+        errorMsg = '提交记录不存在'
+      } else if (errorCode === -23) {
+        errorMsg = '权限错误：您没有权限评分此作业'
+      }
+      alert(errorMsg)
     }
   } catch (err) {
     console.error(err)

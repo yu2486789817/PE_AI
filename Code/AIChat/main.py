@@ -182,7 +182,7 @@ async def create_session(request: Request):
         # ========== 根据角色设置 System Prompt ==========
         if role == 'teacher':
             # 教师角色：使用教学助理 Prompt
-            system_prompt = SYSTEM_PROMPTS["teacher_assistant"]
+            system_prompt = f"当前用户角色：{role}\n" + SYSTEM_PROMPTS["teacher_assistant"]
             welcome_msg_content = "老师您好，我是您的专属AI教学助理。我可以帮您分析全班同学的运动表现数据，或提供教案优化建议。今天需要我帮您做些什么？"
         else:
             # 学生角色：使用私人教练 Prompt，并注入历史运动数据
@@ -201,7 +201,7 @@ async def create_session(request: Request):
                 # 获取失败不影响会话创建，使用默认提示
                 logger.warning(f"create_session: 获取学生历史运动记录失败（Yolo_backend 可能未启动）: {e}")
 
-            system_prompt = SYSTEM_PROMPTS["student_coach"].format(context=context_str)
+            system_prompt = f"当前用户角色：{role}\n" + SYSTEM_PROMPTS["student_coach"].format(context=context_str)
             welcome_msg_content = "你好！我是你的专属AI运动私教。我已经同步了你近期的运动考核数据，随时可以为你提供定制化的训练指导和动作纠正建议。今天想练点什么？"
 
         # 添加 System Prompt 和欢迎消息
@@ -499,6 +499,23 @@ async def list_models():
                 model_info = None
         except:
             model_info = None
+
+        data = {
+            "model": provider,
+            "model_path": MODEL_PATH,
+            "is_finetuned": is_finetuned,
+            "base_model": BASE_MODEL_PATH,
+            "quantization": quantization,
+            "available_models": get_available_models()
+        }
+        if provider == "ollama":
+            data.update({
+                "model_path": OLLAMA_BASE_URL,
+                "base_model": None,
+                "is_finetuned": False,
+                "quantization": None,
+                "ollama_model": OLLAMA_MODEL,
+            })
 
         return JSONResponse({
             "success": True,

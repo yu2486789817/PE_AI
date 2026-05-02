@@ -48,6 +48,7 @@
 
 				<view class="progress-box" v-if="isUploading">
 					<text class="progress-text">上传中... {{ uploadProgress }}%</text>
+					<text class="progress-text" v-if="processingText">{{ processingText }}</text>
 					<view class="progress-bar"><view class="progress-fill" :style="{ width: uploadProgress + '%' }"></view></view>
 				</view>
 
@@ -76,6 +77,7 @@ const isUploading = ref(false);
 const uploadProgress = ref(0);
 const assignmentId = ref('');
 const courseId = ref('');
+const processingText = ref('');
 
 onMounted(() => {
 	const pages = getCurrentPages();
@@ -95,13 +97,49 @@ const loadAssignment = async () => {
 
 		if (resp.data?.success && resp.data.data) {
 			const d = resp.data.data.split('\t\r');
-			const isActive = d[2] && new Date(d[2]) > new Date();
+			const deadline = d[2] || '';
+
+			// 检查提交状态
+			let statusText = '进行中';
+			let statusClass = 'active';
+			try {
+				const user = uni.getStorageSync('user') || {};
+				const token = uni.getStorageSync('token') || '';
+				const submitResp = await request.post('/Homework/get_submit_id_by_student', {
+					first: '0',
+					second: user?.id,
+					third: token,
+					fourth: assignmentId.value,
+					fifth: user?.id
+				});
+				if (submitResp.data?.success && submitResp.data?.data) {
+					const submitData = submitResp.data.data.trim();
+					const invalidValues = ['NULL', '-1', '-2', ''];
+					if (!invalidValues.includes(submitData)) {
+						statusText = '已完成';
+						statusClass = 'active';
+					} else if (deadline && new Date(deadline) < new Date()) {
+						statusText = '已截止';
+						statusClass = 'ended';
+					}
+				} else if (deadline && new Date(deadline) < new Date()) {
+					statusText = '已截止';
+					statusClass = 'ended';
+				}
+			} catch (e) {
+				// 检查失败时 fallback 到截止日期判断
+				if (deadline && new Date(deadline) < new Date()) {
+					statusText = '已截止';
+					statusClass = 'ended';
+				}
+			}
+
 			assignment.value = {
 				title: d[0] || `作业 ${assignmentId.value}`,
 				description: d[1] || '',
-				deadline: d[2] || '',
-				statusText: isActive ? '进行中' : '已截止',
-				statusClass: isActive ? 'active' : 'ended'
+				deadline: deadline,
+				statusText: statusText,
+				statusClass: statusClass
 			};
 		}
 
@@ -136,48 +174,130 @@ const chooseVideo = () => {
 	});
 };
 
-const removeFile = () => {
-	selectedFile.value = null;
-};
-
 const submitAssignment = async () => {
 	if (!selectedFile.value) return;
 	isUploading.value = true;
 	uploadProgress.value = 0;
-	const user = uni.getStorageSync('user');
+	processingText.value = '准备压缩视频...';
+	const user = uni.getStorageSync('user') || {};
+	const studentId = user?.id || '';
+	const jwt = uni.getStorageSync('token') || user?.token || '';
+
+	const uploadProgressTimer = setInterval(() => {
+		if (uploadProgress.value < 90) uploadProgress.value += 5;
+	}, 400);
 
 	try {
-		uni.uploadFile({
-			url: '/Homework/upload_homework',
-			filePath: selectedFile.value.path,
-			name: 'video',
-			formData: {
-				first: assignmentId.value,
-				second: user?.id || ''
-			},
-			success: () => {
-				uni.showToast({ title: '提交成功' });
-				if (assignment.value) {
-					assignment.value.statusText = '已提交';
-					assignment.value.statusClass = 'active';
-				}
-			},
-			fail: () => {
-				uni.showToast({ title: '提交失败', icon: 'none' });
-			},
-			complete: () => {
-				isUploading.value = false;
-			}
+		if (!studentId) throw new Error('未获取到学生ID');
+
+		const compressed = await compressVideo(selectedFile.value.path);
+		processingText.value = '正在上传视频，AI分析将在后台进行...';
+
+		const submitResp = await uploadHomeworkVideo(compressed.path, {
+			student_id: studentId,
+			course_id: courseId.value,
+			homework_id: assignmentId.value,
+			pose_type: aiType.value || 'pushup'
 		});
 
-		const timer = setInterval(() => {
-			if (uploadProgress.value < 90) uploadProgress.value += 10;
-			else clearInterval(timer);
-		}, 500);
+		if (!submitResp?.data?.success) {
+			throw new Error(submitResp?.data?.message || '提交失败');
+		}
+
+		uploadProgress.value = 100;
+		uni.showToast({ title: '提交成功，AI后台分析中' });
+		selectedFile.value = null;
+		if (assignment.value) {
+			assignment.value.statusText = '已提交';
+			assignment.value.statusClass = 'active';
+		}
 	} catch (e) {
+		uni.showToast({ title: e?.message || '提交失败', icon: 'none' });
+	} finally {
+		clearInterval(uploadProgressTimer);
 		isUploading.value = false;
-		uni.showToast({ title: '提交失败', icon: 'none' });
+		processingText.value = '';
 	}
+};
+
+const compressVideo = (src) => {
+	return new Promise((resolve, reject) => {
+		uni.compressVideo({
+			src,
+			quality: 'medium',
+			success: (res) => {
+				resolve({
+					path: res.tempFilePath,
+					size: res.size || 0
+				});
+			},
+			fail: (err) => {
+				// 压缩失败则回退原视频，避免阻断提交流程
+				resolve({ path: src, size: 0 });
+			}
+		});
+	});
+};
+
+const uploadHomeworkVideo = (filePath, formData) => {
+	return new Promise((resolve, reject) => {
+		uni.uploadFile({
+			url: '/Homework/upload_submit',
+			filePath,
+			name: 'file',
+			formData,
+			header: {
+				Authorization: `Bearer ${uni.getStorageSync('token') || ''}`
+			},
+			success: (res) => {
+				if (res.statusCode >= 200 && res.statusCode < 300) {
+					if (typeof res.data === 'string') {
+						try {
+							res.data = JSON.parse(res.data);
+						} catch (e) {
+							reject(new Error('提交响应解析失败'));
+							return;
+						}
+					}
+					resolve(res);
+					return;
+				}
+				reject(new Error(`上传失败(${res.statusCode})`));
+			},
+			fail: () => {
+				reject(new Error('上传失败'));
+			}
+		});
+	});
+};
+
+const fetchAiStats = async (homeworkId, studentId, poseType) => {
+	try {
+		const resp = await request.get(
+			`/video/query_records?homework_id=${encodeURIComponent(homeworkId)}&student_id=${encodeURIComponent(studentId)}&pose_type=${encodeURIComponent(poseType)}`
+		);
+		const rows = Array.isArray(resp?.data) ? resp.data : [];
+		return rows.length > 0 ? rows[0] : null;
+	} catch (e) {
+		return null;
+	}
+};
+
+const buildAiFeedback = (stats) => {
+	if (!stats) return '';
+	const total = Number(stats.total_count) || 0;
+	const correct = Number(stats.correct_count) || 0;
+	const incorrect = Number(stats.incorrect_count) || 0;
+	if (total > 0) {
+		const rate = Math.round((correct / total) * 100);
+		return `本次动作共完成${total}次，其中标准${correct}次，不标准${incorrect}次，标准率${rate}%。`;
+	}
+	return '';
+};
+
+const removeFile = () => {
+	selectedFile.value = null;
+	uploadProgress.value = 0;
 };
 
 const formatDate = (s) => {

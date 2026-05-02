@@ -1,254 +1,125 @@
-<template>
-  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-    <div class="max-w-6xl mx-auto p-6 space-y-8">
-      <!-- 顶部导航栏 -->
-      <div class="flex justify-between items-center py-4">
-        <div class="flex items-center gap-2">
-          <button @click="goBack" class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-            返回
-          </button>
+﻿<template>
+  <div class="page-shell">
+    <div class="page-container">
+      <PageHeader :title="course?.name || '课程详情'" subtitle="管理课程信息、作业发布和课程归档。">
+        <template #actions>
+          <button class="btn-outline" @click="goBack">返回</button>
+          <button class="btn-outline" @click="manageStudents">学生管理</button>
+          <button class="btn-primary" :disabled="isArchived" @click="openPublishDialog">发布作业</button>
+          <button class="btn-outline" @click="editCourse" :disabled="isArchived">编辑课程</button>
+          <button class="btn-danger" @click="toggleArchive">{{ isArchived ? '取消归档' : '归档课程' }}</button>
+        </template>
+      </PageHeader>
+
+      <SectionCard title="课程概览">
+        <div v-if="loading" class="py-10 text-center text-web-ink-500">正在加载课程信息...</div>
+
+        <div v-else-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <p>{{ errorMessage }}</p>
+          <button class="btn-primary mt-3" @click="fetchCourseDetails">重试</button>
         </div>
 
-      </div>
-
-      <!-- 页面标题 -->
-      <section>
-        <h2 class="text-4xl font-bold text-gray-800 mb-4">📚 课程详情</h2>
-      </section>
-
-      <!-- 加载状态 -->
-      <div v-if="loading" class="flex justify-center items-center h-64">
-        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
-      </div>
-
-      <!-- 错误信息 -->
-      <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-3xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="text-3xl text-red-500">❌</div>
-          <h3 class="text-xl font-bold text-red-800">加载失败</h3>
-        </div>
-        <p class="text-red-700">{{ errorMessage }}</p>
-        <button @click="fetchCourseDetails" class="mt-4 px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow">
-          重试
-        </button>
-      </div>
-
-      <!-- 课程信息卡片 -->
-      <section v-else-if="course" class="bg-white rounded-3xl shadow-xl p-6">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-6">
-          <div class="flex-1">
-            <h3 class="text-3xl font-bold text-gray-800 mb-2">{{ course.name }}</h3>
-            <p class="text-gray-600 mb-4">{{ course.info || '暂无描述' }}</p>
-
-            <!-- 课程基本信息 -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div class="flex items-center gap-2 text-gray-600">
-                <span class="text-gray-400">📚</span>
-                <span>{{ course.subject }}</span>
-              </div>
-              <div class="flex items-center gap-2 text-gray-600">
-                <span class="text-gray-400">📊</span>
-                <span>{{ course.is_active === '1' ? '进行中' : '未发布' }}</span>
-              </div>
-              <div class="flex items-center gap-2 text-gray-600">
-                <span class="text-gray-400">📝</span>
-                <span>{{ course.assignments.length }} 个作业</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-gray-400">🔑</span>
-                <span>邀请码</span>
-                <span class="font-mono text-sm bg-gray-100 px-3 py-1 rounded-lg">
-                  {{ course.code || '加载中...' }}
-                </span>
-                <button
-                  @click="copyCode"
-                  class="ml-2 text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                  title="复制邀请码"
-                >
-                  复制
-                </button>
-              </div>
-            </div>
+        <div v-else-if="course" class="space-y-3">
+          <p class="text-web-ink-600">{{ course.info || '暂无课程描述' }}</p>
+          <div class="flex flex-wrap gap-6 text-sm text-web-ink-600">
+            <div>课程号：{{ course.subject || '-' }}</div>
+            <div>邀请码：{{ course.code || '-' }}</div>
+            <div>作业数：{{ course.assignments.length }}</div>
+            <div class="flex items-center gap-2">状态：<StatusTag :value="course.is_active" /></div>
           </div>
+          <div v-if="isArchived" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+            当前课程已归档，不能编辑课程和发布作业。
+          </div>
+        </div>
+      </SectionCard>
 
-    <!-- 操作按钮组 -->
-    <div class="flex flex-wrap gap-3">
-      <button @click="editCourse" class="px-5 py-2 rounded-xl bg-green-500 text-white hover:bg-green-600 transition-all shadow">
-        ✏️ 编辑课程
-      </button>
-      <button @click="manageStudents" class="px-5 py-2 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow">
-        👥 学生管理
-      </button>
-      <button @click="showPublishAssignment = true" class="px-6 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-lg">
-        📝 发布作业
-      </button>
-    </div>
-  </div>
-</section>
+      <SectionCard title="课程作业">
+        <template #extra>
+          <button class="btn-primary" :disabled="isArchived" @click="openPublishDialog">新建作业</button>
+        </template>
 
-      <!-- 作业列表 -->
-      <section v-if="course && course.assignments.length > 0" class="bg-white rounded-3xl shadow-xl p-6">
-        <h3 class="text-2xl font-bold text-gray-800 mb-4">课程作业</h3>
-        <div class="space-y-3">
-          <div v-for="assignment in course.assignments" :key="assignment.id"
-               class="bg-white rounded-xl shadow-md border border-gray-100 p-4 hover:shadow-lg transition-all">
-            <div class="flex flex-col md:flex-row md:items-center justify-between">
-              <div class="flex-1">
-                <h4 class="text-lg font-semibold text-gray-800 mb-1">{{ assignment.title }}</h4>
-                <p class="text-sm text-gray-600 mb-2">{{ assignment.description || '暂无描述' }}</p>
-                <div class="flex items-center space-x-4">
-                  <span class="text-xs px-3 py-1 rounded-full bg-purple-100 text-purple-800">
-                    {{ assignment.aiTypeDisplay }}
-                  </span>
-                  <span :class="['text-xs px-2 py-1 rounded-full',
-                                assignment.status === '进行中' ? 'bg-blue-100 text-blue-800' :
-                                'bg-red-100 text-red-800']">
-                    {{ assignment.status }}
-                  </span>
-                  <span class="text-xs text-gray-500">截止: {{ formatDate(assignment.deadline) }}</span>
+        <EmptyState
+          v-if="course && assignmentList.length === 0"
+          title="暂无作业"
+          description="点击“新建作业”开始布置课程任务。"
+        />
+
+        <div v-else-if="course" class="space-y-3">
+          <article
+            v-for="assignment in assignmentList"
+            :key="assignment.id"
+            class="rounded-lg border border-web-line-200 bg-white p-4"
+          >
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h4 class="text-base font-bold text-web-ink-900">{{ assignment.title }}</h4>
+                <p class="mt-1 text-sm text-web-ink-500">{{ assignment.description || '暂无描述' }}</p>
+                <div class="mt-2 flex flex-wrap gap-3 text-xs text-web-ink-600">
+                  <span>动作类型：{{ assignment.aiTypeDisplay }}</span>
+                  <span>截止时间：{{ formatDate(assignment.deadline) }}</span>
+                  <StatusTag :value="assignment.status === '进行中' ? 'active' : 'expired'" />
                 </div>
               </div>
-              <router-link :to="`${course.id}/assignment/${assignment.id}`"
-                           class="mt-3 md:mt-0 text-blue-500 hover:text-blue-700 text-sm font-medium">
-                查看详情 →
+              <router-link :to="`/teacher/course/${course.id}/assignment/${assignment.id}`" class="btn-outline">
+                查看详情
               </router-link>
             </div>
-          </div>
+          </article>
         </div>
-      </section>
+      </SectionCard>
 
-      <!-- 无作业提示 -->
-      <section v-else-if="course && course.assignments.length === 0" class="bg-white rounded-3xl shadow-xl p-10 text-center">
-        <div class="text-6xl text-gray-300 mb-4">📝</div>
-        <h3 class="text-2xl font-bold text-gray-800 mb-2">暂无作业</h3>
-        <p class="text-gray-500 mb-6">该课程目前还没有发布任何作业</p>
-        <button @click="showPublishAssignment = true" class="px-6 py-3 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-lg">
-          📝 发布第一个作业
-        </button>
-      </section>
-
-      <!-- 未找到课程 -->
-      <section v-else class="bg-white rounded-3xl shadow-xl p-10 text-center">
-        <div class="text-6xl text-gray-300 mb-4">🔍</div>
-        <h3 class="text-2xl font-bold text-gray-800 mb-2">未找到课程</h3>
-        <p class="text-gray-500 mb-6">无法找到指定ID的课程信息</p>
-        <button @click="router.push('/teacher')" class="px-6 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow">
-          返回首页
-        </button>
-      </section>
-
-      <!-- 发布作业弹窗 -->
-      <div v-if="showPublishAssignment" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-3xl shadow-xl p-8 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-          <div class="flex justify-between items-center mb-6">
-            <h3 class="text-2xl font-bold text-gray-800">📝 发布新作业</h3>
-            <button @click="showPublishAssignment = false" class="text-2xl text-gray-400 hover:text-gray-600 transition-colors">
-              ×
-            </button>
+      <el-dialog v-model="showPublishAssignment" title="发布新作业" width="680px">
+        <form class="grid grid-cols-1 md:grid-cols-2 gap-4" @submit.prevent="submitForm">
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm text-web-ink-600">作业标题</label>
+            <input v-model="newAssignment.title" class="input-base" required placeholder="例如：深蹲动作训练" />
           </div>
 
-          <form @submit.prevent="submitForm">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <!-- 作业标题 -->
-              <div class="col-span-1 md:col-span-3">
-                <label for="title" class="block text-sm font-medium text-gray-700 mb-2">作业标题</label>
-                <input
-                  id="title"
-                  v-model="newAssignment.title"
-                  type="text"
-                  required
-                  class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 shadow-sm"
-                  placeholder="例如：深蹲标准动作测试"
-                />
-              </div>
+          <div>
+            <label class="mb-1 block text-sm text-web-ink-600">动作类型</label>
+            <select v-model="newAssignment.aiType" class="input-base" required>
+              <option value="">请选择动作类型</option>
+              <option value="squat">深蹲</option>
+              <option value="pushup">俯卧撑</option>
+              <option value="deadlift">硬拉</option>
+            </select>
+          </div>
 
-              <!-- AI识别运动类型 -->
-              <div>
-                <label for="aiType" class="block text-sm font-medium text-gray-700 mb-2">运动类型</label>
-                <select
-                  id="aiType"
-                  v-model="newAssignment.aiType"
-                  required
-                  class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 shadow-sm"
-                >
-                  <option value="">请选择运动类型</option>
-                  <option value="squat">深蹲</option>
-                  <option value="pushup">俯卧撑</option>
-                  <option value="deadlift">硬拉</option>
-                </select>
-              </div>
+          <div>
+            <label class="mb-1 block text-sm text-web-ink-600">要求次数</label>
+            <input v-model.number="newAssignment.requiredCount" class="input-base" type="number" min="1" max="999" required />
+          </div>
 
-              <!-- 要求完成次数 -->
-              <div>
-                <label for="requiredCount" class="block text-sm font-medium text-gray-700 mb-2">要求完成次数</label>
-                <input
-                  id="requiredCount"
-                  v-model.number="newAssignment.requiredCount"
-                  type="number"
-                  min="1"
-                  max="999"
-                  class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
-                  placeholder="30"
-                  required
-                />
-                <p class="text-xs text-gray-500 mt-1">学生需完成该次数的动作</p>
-              </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm text-web-ink-600">截止时间</label>
+            <input v-model="newAssignment.deadline" class="input-base" type="datetime-local" required />
+          </div>
 
-              <!-- 截止日期 -->
-              <div>
-                <label for="deadline" class="block text-sm font-medium text-gray-700 mb-2">截止日期</label>
-                <input
-                  id="deadline"
-                  v-model="newAssignment.deadline"
-                  type="datetime-local"
-                  required
-                  max="2999-12-31T23:59"
-                  class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 shadow-sm"
-                />
-              </div>
-            </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm text-web-ink-600">作业描述</label>
+            <textarea v-model="newAssignment.description" rows="4" class="input-base" required placeholder="填写动作要求与评分标准" />
+          </div>
 
-            <!-- 作业描述 -->
-            <div class="mt-6">
-              <label for="description" class="block text-sm font-medium text-gray-700 mb-2">作业描述</label>
-                <textarea
-                  id="description"
-                  v-model="newAssignment.description"
-                  rows="4"
-                  required
-                  class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 shadow-sm"
-                  placeholder="详细描述动作要求、次数、评分标准等"
-                ></textarea>
-            </div>
-
-            <div class="mt-10 flex gap-4 justify-end">
-              <button
-                type="button"
-                @click="showPublishAssignment = false"
-                class="px-8 py-3 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all shadow"
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                class="px-8 py-3 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-lg"
-              >
-                发布作业
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+          <div class="md:col-span-2 flex justify-end gap-2">
+            <button type="button" class="btn-outline" @click="showPublishAssignment = false">取消</button>
+            <button type="submit" class="btn-primary">发布作业</button>
+          </div>
+        </form>
+      </el-dialog>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import dayjs from 'dayjs';
+import dayjs from 'dayjs'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import PageHeader from '../../components/ui/PageHeader.vue'
+import SectionCard from '../../components/ui/SectionCard.vue'
+import StatusTag from '../../components/ui/StatusTag.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -268,39 +139,67 @@ const newAssignment = ref({
 })
 
 const courseId = route.params.courseId
-
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 const teacherId = currentUser.id || ''
-const jwt = currentUser.token || 'valid_teacher_jwt'
+const jwt = currentUser.token || ''
 
-// AI类型中英文映射
 const aiTypeMap = {
   squat: '深蹲',
   pushup: '俯卧撑',
   deadlift: '硬拉'
 }
 
-const copyCode = async () => {
-  if (!course.value?.code) {
-    alert('邀请码尚未加载')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(course.value.code)
-    alert('邀请码已复制到剪贴板！')
-  } catch (err) {
-    alert('复制失败，请手动选中复制')
-  }
-}
+const isArchived = computed(() => course.value?.is_active === '2')
+const assignmentList = computed(() => course.value?.assignments || [])
 
 const editCourse = () => {
-  router.push({
-    path: `/teacher/course/${courseId}/edit`,
-  })
+  if (isArchived.value) {
+    alert('课程已归档，不能编辑')
+    return
+  }
+  router.push({ path: `/teacher/course/${courseId}/edit` })
 }
 
 const manageStudents = () => {
   router.push(`/teacher/course/${courseId}/students`)
+}
+
+const openPublishDialog = () => {
+  if (isArchived.value) {
+    alert('课程已归档，不能发布作业')
+    return
+  }
+  showPublishAssignment.value = true
+}
+
+const toggleArchive = async () => {
+  if (!course.value) return
+
+  const willArchive = !isArchived.value
+  const actionText = willArchive ? '归档' : '取消归档'
+  if (!confirm(`确定要${actionText}该课程吗？`)) return
+
+  try {
+    const endpoint = willArchive ? '/Course/archive_course' : '/Course/unarchive_course'
+    const resp = await apiClient.post(endpoint, {
+      First: teacherId,
+      Second: jwt,
+      Third: courseId
+    })
+
+    if (!resp.data.success) {
+      alert(`${actionText}失败：${resp.data.message || '未知错误'}`)
+      return
+    }
+
+    course.value.is_active = willArchive ? '2' : '1'
+    cacheService.invalidate(`course_info:${courseId}`)
+    cacheService.invalidate(`teacher_course_ids:${teacherId}`)
+    alert(`${actionText}成功`)
+  } catch (err) {
+    console.error(err)
+    alert(`${actionText}失败，请稍后重试`)
+  }
 }
 
 const fetchCourseDetails = async () => {
@@ -308,7 +207,6 @@ const fetchCourseDetails = async () => {
   error.value = false
 
   try {
-    // 1. 获取课程基本信息 (使用缓存)
     const courseResp = await cacheService.fetchWithCache(`course_info:${courseId}`, () =>
       apiClient.post('/Course/get_info_by_course_id', { First: courseId })
     )
@@ -317,36 +215,38 @@ const fetchCourseDetails = async () => {
       error.value = true
       return
     }
-    const courseRespData = courseResp.data.data.trim().replace(/\t\r$/g, '');
-    const courseRespDataArray = courseRespData.split(/\t\r/).filter(item => item !== '');
 
-    const c = courseRespDataArray
+    const courseParts = String(courseResp.data.data || '')
+      .trim()
+      .replace(/\t\r$/g, '')
+      .split(/\t\r/)
+      .filter(Boolean)
+
     course.value = {
       id: courseId,
-      name: c[1],
-      info: c[2] || '',
-      code: c[3],
-      subject: c[3] || '未知课号',
-      is_active: c[5],
+      name: courseParts[1] || '',
+      info: courseParts[2] || '',
+      code: courseParts[3] || '',
+      subject: courseParts[3] || '',
+      is_active: String(courseParts[5] || '1'),
       assignments: []
     }
 
-    // 2. 获取作业ID列表 (使用缓存)
     const homeworkResp = await cacheService.fetchWithCache(`course_homework_ids:${courseId}`, () =>
       apiClient.post('/Homework/get_homework_id_by_course', {
-        First: '1', Second: teacherId, Third: jwt, Fourth: courseId
+        First: '1',
+        Second: teacherId,
+        Third: jwt,
+        Fourth: courseId
       })
     )
 
-    if (!homeworkResp.data.success || !homeworkResp.data.data.trim()) {
+    if (!homeworkResp.data.success || !homeworkResp.data.data || homeworkResp.data.data === 'NULL') {
       course.value.assignments = []
-      loading.value = false
       return
     }
 
-    const homeworkIds = homeworkResp.data.data.split('\t\r').filter(Boolean)
-
-    // 3. 并行获取每个作业的详情 + AI类型 (使用缓存)
+    const homeworkIds = String(homeworkResp.data.data).split('\t\r').filter(Boolean)
     const assignmentPromises = homeworkIds.map(async (id) => {
       const [infoResp, aiResp] = await Promise.all([
         cacheService.fetchWithCache(`homework_info:${id}`, () =>
@@ -357,55 +257,53 @@ const fetchCourseDetails = async () => {
         )
       ])
 
+      if (!infoResp.data.success || !infoResp.data.data) return null
 
-      if (!infoResp.data.success || !infoResp.data.data.trim()) return null
-
-
-      const infoRespData = infoResp.data.data.trim().replace(/\t\r$/g, '');
-      const infoRespDataArray = infoRespData.split(/\t\r/).filter(item => item !== '');
-      const d = infoRespDataArray
-
-      let rawAiType = ''
-      if (aiResp.data.success) {
-          const config = aiResp.data.data.trim()
-          const parts = config.split('\t\r')
-          rawAiType = parts[0] || 'squat'
-
+      const info = String(infoResp.data.data).trim().replace(/\t\r$/g, '').split(/\t\r/).filter(Boolean)
+      let rawAiType = 'squat'
+      if (aiResp.data.success && aiResp.data.data) {
+        rawAiType = String(aiResp.data.data).split('\t\r')[0] || 'squat'
       }
-      const aiTypeDisplay = aiTypeMap[rawAiType] || '未知动作'
 
       return {
         id,
-        title: d[0],
-        description: d[1],
-        deadline: d[2],
-        create_time: d[3],
-        status: new Date(d[2]) > new Date() ? '进行中' : '已截止',
+        title: info[0] || '',
+        description: info[1] || '',
+        deadline: info[2] || '',
+        status: info[2] && new Date(info[2]) > new Date() ? '进行中' : '已截止',
         aiType: rawAiType,
-        aiTypeDisplay
+        aiTypeDisplay: aiTypeMap[rawAiType] || '未知动作'
       }
     })
 
-    const assignments = (await Promise.all(assignmentPromises)).filter(Boolean)
-    course.value.assignments = assignments
-
+    course.value.assignments = (await Promise.all(assignmentPromises)).filter(Boolean)
   } catch (err) {
     console.error(err)
     error.value = true
-    errorMessage.value = '加载失败，请检查网络'
+    errorMessage.value = '加载失败，请检查网络连接'
   } finally {
     loading.value = false
   }
 }
 
 const submitForm = async () => {
-  if (!newAssignment.value.title || !newAssignment.value.description || !newAssignment.value.deadline || !newAssignment.value.aiType || !newAssignment.value.requiredCount) {
+  if (isArchived.value) {
+    alert('课程已归档，不能发布作业')
+    return
+  }
+
+  if (
+    !newAssignment.value.title ||
+    !newAssignment.value.description ||
+    !newAssignment.value.deadline ||
+    !newAssignment.value.aiType ||
+    !newAssignment.value.requiredCount
+  ) {
     alert('请完整填写所有字段')
     return
   }
 
   try {
-    // 1. 创建作业
     const addResp = await apiClient.post('/Homework/new_homework', {
       First: teacherId,
       Second: jwt,
@@ -415,35 +313,33 @@ const submitForm = async () => {
       Sixth: dayjs(newAssignment.value.deadline).format('YYYY-MM-DD HH:mm:ss')
     })
 
-    const homeworkId = addResp.data?.data?.trim()
+    const homeworkId = String(addResp.data?.data || '').trim()
     if (!homeworkId) {
-      alert('作业创建失败：未返回ID')
+      alert('作业创建失败：未返回 ID')
       return
     }
 
-    // 2. 设置AI类型
     const setResp = await apiClient.post('/Homework/set_AI_type', {
       First: teacherId,
       Second: jwt,
       Third: courseId,
       Fourth: homeworkId,
       Fifth: newAssignment.value.aiType,
-      Sixth: newAssignment.value.requiredCount.toString()
+      Sixth: String(newAssignment.value.requiredCount)
     })
 
     if (!setResp.data.success) {
-      alert('警告：AI识别模型设置失败，但作业已创建')
+      alert('作业已创建，但 AI 配置失败')
     }
 
-    alert('作业发布成功！')
-    cacheService.invalidate(`course_homework_ids:${courseId}`);
+    alert('作业发布成功')
+    cacheService.invalidate(`course_homework_ids:${courseId}`)
     showPublishAssignment.value = false
-    newAssignment.value = { title: '', aiType: '', description: '', deadline: '' }
-    await fetchCourseDetails()  // 刷新列表，显示新作业和正确运动类型
-
+    newAssignment.value = { title: '', aiType: '', requiredCount: 30, description: '', deadline: '' }
+    await fetchCourseDetails()
   } catch (err) {
     console.error(err)
-    alert('发布失败，请重试')
+    alert('发布失败，请稍后重试')
   }
 }
 
@@ -452,8 +348,8 @@ const formatDate = (dateString) => {
   const date = new Date(dateString)
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
   })

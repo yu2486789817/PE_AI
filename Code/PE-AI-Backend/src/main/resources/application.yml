@@ -4,13 +4,17 @@ server:
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/se_project?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
-    username: root
-    password: YUSHU750705
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:YUSHU750705}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
+  servlet:
+    multipart:
+      max-file-size: 2048MB
+      max-request-size: 2048MB
 
 mybatis-plus:
   configuration:

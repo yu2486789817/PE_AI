@@ -271,15 +271,46 @@ const fetchCourseDetails = async () => {
 
               if (assignmentResponse.data.success && assignmentResponse.data.data) {
                 const assignmentData = assignmentResponse.data.data.split('\t\r');
+                const deadline = assignmentData[2] || '待定';
+
+                // 检查提交状态
+                let submitStatus = '进行中';
+                try {
+                  const submitResponse = await apiClient.post('/Homework/get_submit_id_by_student', {
+                    first: '0',
+                    second: studentId,
+                    third: token,
+                    fourth: homeworkId.trim(),
+                    fifth: studentId
+                  });
+
+                  if (submitResponse.data.success && submitResponse.data.data) {
+                    const submitData = submitResponse.data.data.trim();
+                    const invalidValues = ['NULL', '-1', '-2', ''];
+                    if (!invalidValues.includes(submitData)) {
+                      submitStatus = '已完成';
+                    } else if (new Date(deadline) < new Date()) {
+                      submitStatus = '已截止';
+                    }
+                  } else if (new Date(deadline) < new Date()) {
+                    submitStatus = '已截止';
+                  }
+                } catch (e) {
+                  console.error(`检查作业 ${homeworkId} 提交状态失败:`, e);
+                  if (new Date(deadline) < new Date()) {
+                    submitStatus = '已截止';
+                  }
+                }
+
                 return {
                   id: homeworkId.trim(),
                   title: assignmentData[0] || `作业 ${homeworkId.trim()}`,
                   description: assignmentData[1] || '暂无描述',
-                  deadline: assignmentData[2] || '待定',
+                  deadline: deadline,
                   create_time: assignmentData[3] || '',
                   course_id: courseId,
                   subject: courseCode || '未知课号',
-                  status: new Date(assignmentData[2]) > new Date() ? '进行中' : '已截止',
+                  status: submitStatus,
                   points: 100
                 }
               }

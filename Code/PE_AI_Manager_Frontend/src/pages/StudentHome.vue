@@ -1,435 +1,240 @@
-<template>
-  <div class="min-h-screen bg-slate-50 font-display">
-    <div class="max-w-6xl mx-auto p-6 space-y-8">
+﻿<template>
+  <div class="page-shell">
+    <div class="page-container">
+      <section class="rounded-2xl border border-web-line-200 bg-white/85 p-6 shadow-card">
+        <h1 class="text-3xl font-bold text-web-ink-900">智慧运动课堂</h1>
+        <p class="mt-2 text-sm text-web-ink-500">记录每一次进步，查看课程与作业完成情况。</p>
+      </section>
 
-      <!-- 顶部 Banner -->
-      <div class="relative w-full rounded-2xl overflow-hidden shadow-xl kinetic-shadow">
-        <img src="../assets/HomeHeader.jpg" class="w-full h-80 object-cover opacity-60" />
-        <div class="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent">
-          <div class="absolute inset-0 flex flex-col items-center justify-center space-y-4">
-            <h1 class="text-5xl font-bold tracking-tight text-white drop-shadow-lg">
-              智慧运动课堂
-            </h1>
-            <p class="text-xl text-white/90 font-medium text-center">记录每一次进步 · 见证运动的力量</p>
-          </div>
+      <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="rounded-2xl border border-web-line-200 bg-white p-4 shadow-card">
+          <p class="text-xs font-semibold tracking-wide text-web-ink-500">已加入课程</p>
+          <p class="mt-2 text-3xl font-bold text-web-ink-900">{{ courses.length }}</p>
         </div>
-      </div>
-
-      <!-- 学习进度概览 -->
-      <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white p-6 rounded-2xl border border-slate-100 kinetic-shadow flex items-center space-x-4">
-          <div class="p-3 rounded-xl bg-blue-50 text-blue-600">
-            <BookIcon class="w-6 h-6" />
-          </div>
-          <div>
-            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">已参加课程</p>
-            <p class="text-2xl font-black text-slate-900">{{ courses.length }}</p>
-          </div>
+        <div class="rounded-2xl border border-web-line-200 bg-white p-4 shadow-card">
+          <p class="text-xs font-semibold tracking-wide text-web-ink-500">完成作业数</p>
+          <p class="mt-2 text-3xl font-bold text-web-ink-900">{{ totalCompletedAssignments }}</p>
         </div>
-        <div class="bg-white p-6 rounded-2xl border border-slate-100 kinetic-shadow flex items-center space-x-4">
-          <div class="p-3 rounded-xl bg-green-50 text-green-600">
-            <ClipboardListIcon class="w-6 h-6" />
-          </div>
-          <div>
-            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">完成作业数</p>
-            <p class="text-2xl font-black text-slate-900">{{ courses.reduce((acc, c) => acc + c.completedAssignments, 0) }}</p>
-          </div>
-        </div>
-        <div class="bg-white p-6 rounded-2xl border border-slate-100 kinetic-shadow flex items-center space-x-4">
-          <div class="p-3 rounded-xl bg-orange-50 text-orange-600">
-            <ActivityIcon class="w-6 h-6" />
-          </div>
-          <div>
-            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">总完成率</p>
-            <p class="text-2xl font-black text-slate-900">
-              {{ courses.length > 0 ? Math.round(courses.reduce((acc, c) => acc + c.completionRate, 0) / courses.length) : 0 }}%
-            </p>
-          </div>
+        <div class="rounded-2xl border border-web-line-200 bg-white p-4 shadow-card">
+          <p class="text-xs font-semibold tracking-wide text-web-ink-500">平均完成率</p>
+          <p class="mt-2 text-3xl font-bold text-web-ink-900">{{ averageCompletionRate }}%</p>
         </div>
       </section>
 
-      <!-- 核心课程列表 -->
-      <section>
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center space-x-2">
-            <GraduationCapIcon class="w-6 h-6 text-blue-600" />
-            <h2 class="text-2xl font-bold text-slate-900">活跃课程</h2>
+      <section class="rounded-2xl border border-web-line-200 bg-white p-5 shadow-card">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-web-ink-900">我的课程</h2>
+          <div class="flex gap-2">
+            <button class="btn-outline" @click="openAddCourseModal">加入课程</button>
+            <button class="btn-outline" @click="fetchCourseList">刷新</button>
           </div>
         </div>
 
-        <!-- 加载状态 -->
-        <div v-if="loadingCourses" class="flex flex-col items-center justify-center py-12">
-          <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p class="text-gray-600">正在加载课程列表...</p>
+        <div v-if="loadingCourses" class="py-10 text-center text-web-ink-500">正在加载课程列表...</div>
+
+        <div v-else-if="coursesError" class="rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
+          <p>{{ coursesErrorMessage }}</p>
         </div>
 
-        <!-- 错误状态 -->
-        <div v-else-if="coursesError" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p class="text-red-600 mb-4">{{ coursesErrorMessage }}</p>
-          <button @click="fetchCourseList" class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
-            重试
-          </button>
+        <div v-else-if="courses.length === 0" class="rounded-lg border border-web-line-200 bg-web-surface-100 p-8 text-center">
+          <p class="text-web-ink-700">暂无课程</p>
+          <p class="mt-2 text-sm text-web-ink-500">点击“加入课程”输入课程码。</p>
         </div>
 
-        <!-- 空状态 -->
-        <div v-else-if="courses.length === 0" class="bg-gray-50 border border-gray-200 rounded-xl p-12 text-center">
-          <p class="text-gray-600 text-lg mb-2">暂无课程</p>
-          <p class="text-gray-500 text-sm">点击右侧"加入课程"按钮开始学习</p>
-        </div>
-
-        <!-- 课程列表 -->
-        <div v-else class="grid grid-cols-1 gap-4">
-          <div
+        <div v-else class="space-y-3">
+          <article
             v-for="course in courses"
             :key="course.id"
-            class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all kinetic-shadow"
+            class="rounded-xl border border-web-line-200 bg-white p-4"
           >
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div class="flex-1">
-                <div class="flex items-center space-x-3 mb-2">
-                  <h3 class="text-xl font-bold text-slate-900">{{ course.name }}</h3>
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-lg font-bold text-web-ink-900">{{ course.name }}</h3>
                   <span
-                    :class="[
-                      'text-xs px-2.5 py-1 rounded-full font-bold border',
-                      course.status === '进行中' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-100 text-slate-600 border-slate-200'
-                    ]"
+                    class="rounded-full border px-2 py-0.5 text-xs font-semibold"
+                    :class="course.status === '进行中' ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-slate-200 bg-slate-100 text-slate-600'"
                   >
                     {{ course.status }}
                   </span>
                 </div>
-                <p class="text-sm text-slate-500 mb-4 line-clamp-1">{{ course.description }}</p>
-                <div class="flex items-center space-x-6 text-xs text-slate-400 font-medium">
-                  <span class="flex items-center"><BookIcon class="w-3.5 h-3.5 mr-1.5" />{{ course.subject }}</span>
-                  <span class="flex items-center"><ClipboardListIcon class="w-3.5 h-3.5 mr-1.5" />作业: {{ course.completedAssignments }}/{{ course.totalAssignments }}</span>
-                  <span class="flex items-center"><ActivityIcon class="w-3.5 h-3.5 mr-1.5" />完成率: {{ course.completionRate }}%</span>
-                </div>
+                <p class="mt-1 text-sm text-web-ink-500">{{ course.description || '暂无课程描述' }}</p>
+                <p class="mt-2 text-xs text-web-ink-600">
+                  课程号：{{ course.subject || '-' }}
+                  <span class="mx-2">|</span>
+                  作业：{{ course.completedAssignments }}/{{ course.totalAssignments }}
+                  <span class="mx-2">|</span>
+                  完成率：{{ course.completionRate }}%
+                </p>
               </div>
-              <router-link
-                :to="`/student/course/${course.id}`"
-                class="px-6 py-2 bg-slate-50 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-bold transition-colors kinetic-button text-center"
-              >
-                进入课程
-              </router-link>
+              <router-link :to="`/student/course/${course.id}`" class="btn-primary">进入课程</router-link>
             </div>
-          </div>
+          </article>
         </div>
       </section>
-
     </div>
 
-    <!-- 个性化健康报告对话框 -->
-    <div
-      v-if="showHealthReportDialog"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      @click="closeHealthReportDialog"
-    >
-      <div
-        class="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200"
-        @click.stop
-      >
-        <div class="px-8 py-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <div>
-            <h3 class="text-xl font-bold text-slate-900">生成个性化健康报告</h3>
-            <p class="text-slate-500 text-xs font-medium mt-1">根据您的身体条件生成个性化健康建议</p>
-          </div>
-          <button
-            @click="closeHealthReportDialog"
-            class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors kinetic-button"
-          >
-            <XIcon class="w-5 h-5" />
-          </button>
-        </div>
+    <div v-if="showAddCourseModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" @click="showAddCourseModal = false">
+      <div class="w-full max-w-md rounded-2xl border border-web-line-200 bg-white p-6 shadow-soft" @click.stop>
+        <h3 class="text-xl font-bold text-web-ink-900">加入课程</h3>
+        <p class="mt-2 text-sm text-web-ink-500">请输入 6 位课程码。</p>
 
-        <div class="p-6 overflow-y-auto max-h-[60vh]">
-          <div class="mb-6 p-4 bg-gray-50 rounded-xl">
-            <h4 class="text-lg font-semibold text-gray-700 mb-3">学生信息（可选）</h4>
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-600 mb-2">身高（cm）</label>
-                <input
-                  v-model="studentHeight"
-                  type="number"
-                  placeholder="例如：175"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-600 mb-2">体重（kg）</label>
-                <input
-                  v-model="studentWeight"
-                  type="number"
-                  placeholder="例如：65"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-              </div>
-            </div>
-          </div>
+        <input v-model="courseCodeInput" type="text" class="input-base mt-4" maxlength="6" placeholder="例如：123456" />
 
-          <div class="mb-6 p-4 bg-gray-50 rounded-xl">
-            <h4 class="text-lg font-semibold text-gray-700 mb-3">您的健康问题</h4>
-            <textarea
-              v-model="healthReportQuery"
-              placeholder="请输入您想要咨询的健康问题，例如：根据我的情况给出长期训练建议"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-              rows="3"
-            ></textarea>
-            <button
-              @click="generateHealthReport"
-              :disabled="healthReportLoading || !healthReportQuery.trim()"
-              class="mt-4 w-full px-6 py-3 bg-blue-400 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {{ healthReportLoading ? '生成中...' : '生成个性化健康报告' }}
-            </button>
-          </div>
-
-          <div v-if="healthReportLoading" class="flex justify-center items-center py-8">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-500"></div>
-          </div>
-
-          <div v-else-if="healthReportError" class="bg-red-50 border border-red-200 rounded-xl p-6">
-            <h4 class="text-lg font-bold text-red-800 mb-2">生成失败</h4>
-            <p class="text-red-700">{{ healthReportError }}</p>
-          </div>
-
-          <div v-else-if="healthReportContent" class="prose prose-sm max-w-none bg-white">
-            <div v-html="renderMarkdown(healthReportContent)"></div>
-          </div>
-
-          <div v-else class="text-center py-8 text-gray-500">
-            点击上方按钮生成个性化健康报告
-          </div>
-        </div>
-
-        <div class="p-6 border-t border-gray-200 bg-gray-50">
-          <div class="flex justify-end gap-3">
-            <button
-              v-if="healthReportContent"
-              @click="downloadHealthReport"
-              class="px-6 py-2 rounded-xl bg-green-500 text-white hover:bg-green-600 transition-all"
-            >
-              下载
-            </button>
-            <button
-              @click="closeHealthReportDialog"
-              class="px-6 py-2 rounded-xl bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 加入课程模态框 -->
-    <div v-if="showAddCourseModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
-        <h2 class="text-2xl font-bold mb-6 text-gray-800">加入课程</h2>
-        <div class="mb-6">
-          <p class="mb-2 text-gray-700">请输入教师提供的课程码：</p>
-          <input
-            v-model="courseCodeInput"
-            type="text"
-            placeholder="例如：ABC123"
-            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:outline-none transition-all text-lg"
-          />
-        </div>
-
-        <div v-if="addCourseMessage" :class="addCourseSuccess ? 'text-green-600' : 'text-red-600'" class="text-center mb-4">
+        <p v-if="addCourseMessage" class="mt-3 text-sm" :class="addCourseSuccess ? 'text-green-600' : 'text-red-600'">
           {{ addCourseMessage }}
-        </div>
+        </p>
 
-        <div class="flex gap-3">
-          <button
-            @click="handleAddCourse"
-            class="flex-1 py-3 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 transition-all shadow-lg"
-          >
-            加入课程
-          </button>
-          <button
-            @click="showAddCourseModal = false"
-            class="flex-1 py-3 rounded-xl bg-gray-200 text-gray-800 font-bold hover:bg-gray-300 transition-all shadow-lg"
-          >
-            取消
-          </button>
+        <div class="mt-5 flex gap-2">
+          <button class="btn-outline flex-1" @click="showAddCourseModal = false">取消</button>
+          <button class="btn-primary flex-1 justify-center" @click="handleAddCourse">加入</button>
         </div>
       </div>
     </div>
-
-
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
 import { apiClient } from '../services/axios'
-import { marked } from 'marked'
-import { GraduationCap as GraduationCapIcon, FileText as FileTextIcon, Plus as PlusIcon, Book as BookIcon, ClipboardList as ClipboardListIcon, Activity as ActivityIcon, X as XIcon } from 'lucide-vue-next'
 
-const router = useRouter()
-
-// 获取当前用户信息
-const user = JSON.parse(localStorage.getItem('user') || '{}')
-
-// 个性化健康报告相关
-const showHealthReportDialog = ref(false)
-const studentHeight = ref('')
-const studentWeight = ref('')
-const healthReportQuery = ref('')
-const healthReportContent = ref('')
-const healthReportLoading = ref(false)
-const healthReportError = ref('')
-
-const courseCodeInput = ref('')
 const showAddCourseModal = ref(false)
+const courseCodeInput = ref('')
 const addCourseMessage = ref('')
 const addCourseSuccess = ref(false)
 
-// 课程列表相关
 const courses = ref([])
 const loadingCourses = ref(false)
 const coursesError = ref(false)
 const coursesErrorMessage = ref('')
 
-// 获取课程列表
+const totalCompletedAssignments = computed(() =>
+  courses.value.reduce((acc, course) => acc + Number(course?.completedAssignments || 0), 0)
+)
+
+const averageCompletionRate = computed(() => {
+  if (!courses.value.length) return 0
+  const totalRate = courses.value.reduce((acc, course) => acc + Number(course?.completionRate || 0), 0)
+  return Math.round(totalRate / courses.value.length)
+})
+
 const fetchCourseList = async () => {
   loadingCourses.value = true
   coursesError.value = false
   coursesErrorMessage.value = ''
 
   try {
-    // 获取当前学生ID
-    const currentUser = JSON.parse(localStorage.getItem('user'))
-    const studentId = currentUser ? currentUser.id : 'student1'
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+    const studentId = currentUser.id
+    const token = (currentUser.token || '').trim()
 
-    // 获取JWT token
-    const user = JSON.parse(localStorage.getItem('user'))
-    const token = user.token
-    console.log('user:', user)
-    if (!token || token.trim() === '') {
-      throw new Error('未找到认证token，请重新登录')
+    if (!studentId || !token) {
+      throw new Error('登录信息失效，请重新登录')
     }
 
-    // 调用get_course_id_by_student接口获取课程ID列表
     const response = await apiClient.post('/Course_student/get_course_id_by_student', {
       first: studentId,
-      second: token.trim()
+      second: token
     })
 
-    if (response.data.success) {
-      if (!response.data.data || response.data.data.trim() === '' || response.data.data === 'NULL') {
-        courses.value = []
-        console.log('暂无课程')
-      } else {
-        // 解析课程ID列表（用\t\r分隔）
-        const courseIdList = response.data.data.split('\t\r').filter(id => id.trim())
-
-        // 为每个课程ID获取课程详情
-        const courseDetailsPromises = courseIdList.map(async (courseId) => {
-          try {
-            const detailResponse = await apiClient.post('/Course/get_info_by_course_id', {
-              first: courseId.trim(),
-              second: token
-            })
-            console.log('获取课程详情响应:', detailResponse.data)
-            if (detailResponse.data.success && detailResponse.data.data) {
-              // 解析课程数据字符串，格式为: 教师id\t\r课程名字\t\r课程描述\t\r课程码\t\r课程所在学期\t\r课程是否正在进行(1是0否)\t\r课程创建时间
-              const courseDataArray = detailResponse.data.data.split('\t\r');
-
-              console.log('课程数据:', courseDataArray)
-
-              // 安全地解析课程数据，处理字段可能为空的情况
-              const teacherId = courseDataArray[0] || '';
-              const courseName = courseDataArray[1] || '未命名课程';
-              const courseDescription = courseDataArray[2] || '暂无描述';
-              const courseCode = courseDataArray[3] || '';
-              const courseTerm = courseDataArray[4] || '';
-              const isActive = courseDataArray[5] || '0';
-              const createTime = courseDataArray[6] || '';
-
-              console.log('解析后的课程数据:', {
-                teacherId,
-                courseName,
-                courseDescription,
-                courseCode,
-                courseTerm,
-                isActive,
-                createTime
-              })
-
-              // 获取该课程的作业列表
-              const homeworkResponse = await apiClient.post('/Homework/get_homework_id_by_course', {
-                first: '0', // 学生
-                second:  studentId,
-                third: token,
-                fourth:courseId.trim()
-              })
-
-              let assignments = []
-              if (homeworkResponse.data.success && homeworkResponse.data.data) {
-                const homeworkIdList = homeworkResponse.data.data.split('\t\r').filter(id => id.trim())
-                assignments = homeworkIdList.map(homeworkId => ({
-                  id: homeworkId.trim(),
-                  title: `作业 ${homeworkId.trim()}`,
-                  description: '作业描述',
-                  deadline: '待定',
-                  status: '进行中'
-                }))
-              }
-
-              return {
-                id: courseId.trim(),
-                name: courseName,
-                description: courseDescription,
-                code: courseCode,
-                subject: courseCode || '未知课号',
-                status: isActive === '1' ? '进行中' : '已结束',
-                term: courseTerm,
-                createTime: createTime,
-                teacherId: teacherId,
-                assignments: assignments,
-                totalAssignments: assignments.length,
-                completedAssignments: assignments.filter(a => a.status === '已完成').length,
-                completionRate: assignments.length > 0
-                  ? Math.round((assignments.filter(a => a.status === '已完成').length / assignments.length) * 100)
-                  : 0
-              }
-            }
-          } catch (error) {
-            console.error(`获取课程 ${courseId} 详情失败:`, error)
-            return null
-          }
-        })
-
-        // 等待所有课程详情获取完成
-        const courseDetails = await Promise.all(courseDetailsPromises)
-        courses.value = courseDetails.filter(course => course !== null)
-
-        console.log('课程列表加载成功:', courses.value)
-      }
-    } else {
+    if (!response.data.success) {
       throw new Error(response.data.message || '获取课程列表失败')
     }
-  } catch (err) {
-    console.error('获取课程列表失败:', err)
 
-    // Check if the error contains NULL or 暂无课程 in the response message or error message
-    const errorMessage = err.response?.data?.message || err.message || '';
-    if (errorMessage.includes('NULL') || errorMessage.includes('暂无课程')) {
-      coursesError.value = false
-      coursesErrorMessage.value = ''
+    const raw = String(response.data.data || '').trim()
+    if (!raw || raw === 'NULL') {
       courses.value = []
-    } else {
-      coursesError.value = true
-      coursesErrorMessage.value = err.response?.data?.message || err.message || '获取课程列表失败，请稍后重试'
-      courses.value = []
+      return
     }
+
+    const courseIdList = raw.split('\t\r').map((id) => id.trim()).filter(Boolean)
+
+    const courseDetails = await Promise.all(
+      courseIdList.map(async (courseId) => {
+        try {
+          const detailResponse = await apiClient.post('/Course/get_info_by_course_id', {
+            first: courseId,
+            second: token
+          })
+
+          if (!detailResponse.data.success || !detailResponse.data.data) return null
+
+          const arr = String(detailResponse.data.data).split('\t\r')
+          const isActive = String(arr[5] || '0')
+
+          const homeworkResponse = await apiClient.post('/Homework/get_homework_id_by_course', {
+            first: '0',
+            second: studentId,
+            third: token,
+            fourth: courseId
+          })
+
+          let totalAssignments = 0
+          let completedAssignments = 0
+          let completionRate = 0
+
+          if (homeworkResponse.data.success && homeworkResponse.data.data && homeworkResponse.data.data !== 'NULL') {
+            const homeworkIds = String(homeworkResponse.data.data).split('\t\r').map((x) => x.trim()).filter(Boolean)
+            totalAssignments = homeworkIds.length
+
+            // 查询每个作业的提交状态
+            for (const homeworkId of homeworkIds) {
+              try {
+                const submitResponse = await apiClient.post('/Homework/get_submit_id_by_student', {
+                  first: '0',
+                  second: studentId,
+                  third: token,
+                  fourth: homeworkId,
+                  fifth: studentId
+                })
+
+                if (submitResponse.data.success && submitResponse.data.data) {
+                  const submitData = submitResponse.data.data.trim()
+                  // 检查是否有有效提交（不是 NULL、-1、-2、空字符串）
+                  const invalidValues = ['NULL', '-1', '-2', '']
+                  if (!invalidValues.includes(submitData)) {
+                    completedAssignments++
+                  }
+                }
+              } catch (e) {
+                console.error(`查询作业 ${homeworkId} 提交状态失败`, e)
+              }
+            }
+
+            // 计算完成率
+            if (totalAssignments > 0) {
+              completionRate = Math.round((completedAssignments / totalAssignments) * 100)
+            }
+          }
+
+          return {
+            id: courseId,
+            name: arr[1] || '未命名课程',
+            description: arr[2] || '',
+            subject: arr[3] || '',
+            status: isActive === '1' ? '进行中' : '已结束',
+            totalAssignments,
+            completedAssignments,
+            completionRate
+          }
+        } catch (error) {
+          console.error(`获取课程 ${courseId} 详情失败`, error)
+          return null
+        }
+      })
+    )
+
+    courses.value = courseDetails.filter(Boolean)
+  } catch (err) {
+    coursesError.value = true
+    coursesErrorMessage.value = err?.response?.data?.message || err.message || '获取课程失败'
+    courses.value = []
+    console.error('获取课程列表失败:', err)
   } finally {
     loadingCourses.value = false
   }
 }
 
-// 加入课程功能
 const openAddCourseModal = () => {
   showAddCourseModal.value = true
   courseCodeInput.value = ''
@@ -438,228 +243,40 @@ const openAddCourseModal = () => {
 }
 
 const handleAddCourse = async () => {
-  if (!courseCodeInput.value.trim()) {
-    addCourseMessage.value = '请输入课程码'
+  const code = courseCodeInput.value.trim()
+  if (!/^\d{6}$/.test(code)) {
+    addCourseMessage.value = '课程码必须是 6 位数字'
     addCourseSuccess.value = false
     return
   }
 
-  const validationResult = validateCourseCode(courseCodeInput.value.trim())
-  if (!validationResult.valid) {
-    addCourseMessage.value = validationResult.message
-    addCourseSuccess.value = false
-    return
-  }
-
-  // 获取当前学生ID（模拟）
-  const currentUser = JSON.parse(localStorage.getItem('user'))
-  const studentId = currentUser ? currentUser.id : 'student1'
-
-  // 添加学生到课程
   try {
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+    const studentId = currentUser.id
     const token = currentUser.token
-    console.log('加入课程请求:', {
-      first: studentId,
-      second: token,
-      third: validationResult.courseCode.id
-    })
 
     const response = await apiClient.post('/Course_student/add_course', {
       first: studentId,
       second: token,
-      third: validationResult.courseCode.id
+      third: code
     })
 
-    console.log('加入课程响应:', response.data)
     if (!response.data.success) {
       throw new Error(response.data.message || '加入课程失败')
     }
+
+    addCourseMessage.value = '加入课程成功'
+    addCourseSuccess.value = true
+
+    setTimeout(() => {
+      showAddCourseModal.value = false
+      fetchCourseList()
+    }, 800)
   } catch (err) {
-    addCourseMessage.value = err.message || '加入课程失败，请稍后重试'
+    addCourseMessage.value = err?.response?.data?.message || err.message || '加入课程失败'
     addCourseSuccess.value = false
-    return
-  }
-
-  addCourseMessage.value = `成功加入课程：${validationResult.courseCode.className}`
-  addCourseSuccess.value = true
-
-  // 关闭模态框
-  setTimeout(() => {
-    showAddCourseModal.value = false
-    // 刷新课程列表
-    fetchCourseList()
-  }, 1500)
-};
-
-// 验证课程码格式：6位只包含数字
-const validateCourseCode = (code) => {
-  // 检查是否为6位字符
-  if (code.length !== 6) {
-    return {
-      valid: false,
-      message: '课程码必须为6位字符'
-    }
-  }
-
-  // 检查是否只包含字母和数字
-  const alphanumericRegex = /^[0-9]+$/
-  if (!alphanumericRegex.test(code)) {
-    return {
-      valid: false,
-      message: '课程码只能包含数字'
-    }
-  }
-
-  // 验证通过，返回课程码信息
-  return {
-    valid: true,
-    courseCode: {
-      id: code,
-      className: `课程 ${code}` // 临时显示名称，实际名称会在获取课程详情时更新
-    }
   }
 }
 
-// 组件挂载时获取课程列表
-onMounted(() => {
-  fetchCourseList()
-})
-
-// Markdown渲染函数
-const renderMarkdown = (content) => {
-  if (!content) return ''
-
-  let contentStr = content
-
-  if (typeof content === 'object') {
-    contentStr = JSON.stringify(content, null, 2)
-  }
-
-  try {
-    return marked.parse(contentStr)
-  } catch (err) {
-    console.error('Markdown渲染失败:', err)
-    return contentStr
-  }
-}
-
-// 获取当前用户ID
-const getUserId = () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
-  return user.id || 'default_user'
-}
-
-// 打开健康报告对话框
-const openHealthReportDialog = () => {
-  showHealthReportDialog.value = true
-  healthReportContent.value = ''
-  healthReportError.value = ''
-  healthReportQuery.value = ''
-}
-
-// 关闭健康报告对话框
-const closeHealthReportDialog = () => {
-  showHealthReportDialog.value = false
-}
-
-// 生成健康报告
-const generateHealthReport = async () => {
-  healthReportLoading.value = true
-  healthReportError.value = ''
-  healthReportContent.value = ''
-
-  try {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/chat'
-
-    const requestData = {
-      student_id: getUserId(),
-      analysis_type: 'personalized_tips',
-      query: healthReportQuery.value
-    }
-
-    if (studentHeight.value || studentWeight.value) {
-      requestData.student_info = {}
-      if (studentHeight.value) {
-        requestData.student_info.height = studentHeight.value
-      }
-      if (studentWeight.value) {
-        requestData.student_info.weight = studentWeight.value
-      }
-    }
-
-    const url = `${baseUrl}/api/analysis/generate`
-
-    console.log('请求URL:', url)
-    console.log('请求体:', JSON.stringify(requestData, null, 2))
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestData)
-    })
-
-    console.log('响应状态:', response.status)
-    console.log('响应头:', Object.fromEntries(response.headers.entries()))
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('响应错误文本:', errorText)
-      throw new Error(`HTTP ${response.status}: ${errorText}`)
-    }
-
-    const responseText = await response.text()
-    console.log('响应文本:', responseText)
-
-    let result
-    try {
-      result = JSON.parse(responseText)
-      console.log('解析后的JSON:', result)
-      // 修复：正确获取报告内容
-      if (result.success && result.data && result.data.report) {
-        healthReportContent.value = result.data.report
-      } else {
-        healthReportContent.value = result.analysis || result.content || responseText
-      }
-    } catch (parseError) {
-      console.log('JSON解析失败，直接使用响应文本')
-      healthReportContent.value = responseText
-    }
-  } catch (err) {
-    console.error('生成健康报告失败:', err)
-    healthReportError.value = err.message || '生成健康报告失败，请稍后重试'
-  } finally {
-    healthReportLoading.value = false
-  }
-}
-
-// 下载健康报告
-const downloadHealthReport = () => {
-  if (!healthReportContent.value) return
-
-  try {
-    // 确保内容是字符串格式
-    let contentStr = healthReportContent.value
-    if (typeof healthReportContent.value === 'object' && healthReportContent.value.success && healthReportContent.value.data && healthReportContent.value.data.report) {
-      // 如果是API返回的完整对象，提取报告内容
-      contentStr = healthReportContent.value.data.report
-    } else if (typeof healthReportContent.value === 'object') {
-      contentStr = JSON.stringify(healthReportContent.value, null, 2)
-    }
-
-    const blob = new Blob([contentStr], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `健康报告_${getUserId()}_${new Date().toLocaleDateString('zh-CN')}.md`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  } catch (err) {
-    console.error('下载报告失败:', err)
-    alert('下载报告失败，请稍后重试')
-  }
-}
+onMounted(fetchCourseList)
 </script>

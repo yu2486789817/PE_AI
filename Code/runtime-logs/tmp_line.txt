@@ -1,0 +1,1 @@
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "100"))  # 限制输出长度，加快推�?

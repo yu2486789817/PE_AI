@@ -30,7 +30,7 @@ export const createSession = async (userId, model = 'Qwen') => {
 	try {
 		const response = await request.post('/chat/api/sessions', {
 			user_id: userId,
-			model: model
+			model
 		});
 		if (response.data && response.data.success) {
 			return { success: true, data: response.data.data };
@@ -58,8 +58,8 @@ export const getSession = async (sessionId) => {
 export const sendMessage = async (sessionId, message, model = 'Qwen') => {
 	try {
 		const response = await request.post(`/chat/api/sessions/${sessionId}/messages`, {
-			message: message,
-			model: model
+			message,
+			model
 		});
 		if (response.data && response.data.success) {
 			return { success: true, data: response.data.data };
@@ -110,6 +110,39 @@ export const getModels = async () => {
 	}
 };
 
+export const exportSession = async (sessionId) => {
+	return new Promise((resolve) => {
+		uni.downloadFile({
+			url: `/chat/api/sessions/${sessionId}/export`,
+			success: (res) => {
+				if (res.statusCode >= 200 && res.statusCode < 300) {
+					resolve({ success: true, tempFilePath: res.tempFilePath });
+					return;
+				}
+				resolve({ success: false, message: `导出失败(${res.statusCode})` });
+			},
+			fail: () => resolve({ success: false, message: '导出失败' })
+		});
+	});
+};
+
+export const generateReport = async (studentId, query = '根据我的情况给出综合分析和下周长期训练建议') => {
+	try {
+		const response = await request.post('/chat/api/analysis/generate', {
+			student_id: studentId,
+			analysis_type: 'personalized_tips',
+			query
+		});
+		if (response.data && response.data.success) {
+			return { success: true, data: response.data.data };
+		}
+		return { success: false, message: response.data?.error || '生成报告失败' };
+	} catch (error) {
+		console.error('生成报告失败:', error);
+		return { success: false, message: '生成报告失败' };
+	}
+};
+
 export default {
 	getSessions,
 	getLatestSession,
@@ -118,5 +151,7 @@ export default {
 	sendMessage,
 	deleteSession,
 	clearSession,
-	getModels
+	getModels,
+	exportSession,
+	generateReport
 };

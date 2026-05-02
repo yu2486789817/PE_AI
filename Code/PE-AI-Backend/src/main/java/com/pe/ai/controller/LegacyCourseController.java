@@ -12,8 +12,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -26,10 +30,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LegacyCourseController {
 
+    private static final DateTimeFormatter LEGACY_DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private final CourseMapper courseMapper;
     private final HomeworkMapper homeworkMapper;
     private final SubmitMapper submitMapper;
     private final StudentCourseMapper studentCourseMapper;
+    private final StudentMapper studentMapper;
     private final CourseClassMapper courseClassMapper;
     private final AiTypeMapper aiTypeMapper;
     private final UserService userService;
@@ -41,6 +49,61 @@ public class LegacyCourseController {
 
     private String resolveJwt(Map<String, String> body, HttpServletRequest request) {
         return RequestValueResolver.resolveJwt(body, request);
+    }
+
+    private boolean isCourseArchived(Course course) {
+        return course != null && Integer.valueOf(2).equals(course.getIsActive());
+    }
+
+    private Result<Void> rejectIfCourseArchived(Course course) {
+        if (isCourseArchived(course)) {
+            return Result.error(-22, "Course archived");
+        }
+        return null;
+    }
+
+    private Result<Void> checkLegacyAuth(Map<String, String> body, HttpServletRequest request) {
+        String capacity = getParam(body, "capacity");
+        String userId = getParam(body, "user_id");
+        String jwt = resolveJwt(body, request);
+        String legacyThird = getParam(body, "third");
+
+        if (capacity == null) capacity = getParam(body, "first");
+        if (userId == null) userId = getParam(body, "second");
+        if (capacity != null && userId != null && legacyThird != null &&
+                ("0".equals(capacity.trim()) || "1".equals(capacity.trim()))) {
+            jwt = RequestValueResolver.normalizeBearerToken(legacyThird);
+        }
+
+        if (capacity != null && userId != null && ("0".equals(capacity.trim()) || "1".equals(capacity.trim()))) {
+            return userService.checkJwt(Integer.parseInt(capacity.trim()), userId, jwt);
+        }
+
+        String teacherId = getParam(body, "teacher_id");
+        if (teacherId == null) teacherId = getParam(body, "first");
+        if (teacherId != null && teacherId.trim().matches("\\d{4,}")) {
+            Result<Void> teacherAuth = userService.checkJwt(1, teacherId, jwt);
+            if (teacherAuth.getCode() >= 0) return teacherAuth;
+        }
+
+        String studentId = getParam(body, "student_id");
+        if (studentId == null) studentId = getParam(body, "first");
+        if (studentId != null && studentId.trim().matches("\\d{4,}")) {
+            return userService.checkJwt(0, studentId, jwt);
+        }
+
+        // Legacy read-only style calls often send only { first: resourceId, second: jwt }.
+        // In that case there is no explicit user id to re-compute the full token hash.
+        // We still require a non-expired token timestamp to avoid breaking existing pages.
+        if (jwt != null && jwt.length() >= 14) {
+            String jwtTime = jwt.substring(0, 14);
+            if (!SecurityUtil.isTokenExpired(jwtTime)) {
+                return Result.success();
+            }
+            return Result.error(-24, "JWT TLE");
+        }
+
+        return Result.error(-23, "JWT Missing");
     }
 
     // ─────────────────────────────────────────────
@@ -91,6 +154,8 @@ public class LegacyCourseController {
         Course course = courseMapper.selectOne(
                 new LambdaQueryWrapper<Course>().eq(Course::getCode, courseCode));
         if (course == null) return Result.error(-21, "Course not found");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return archivedCheck;
 
         // 检查是否已加入
         Long exists = studentCourseMapper.selectCount(
@@ -107,6 +172,78 @@ public class LegacyCourseController {
         return Result.success();
     }
 
+    @PostMapping("/Course_student/import_students_by_teacher")
+    public Result<Map<String, Object>> importStudentsByTeacher(@RequestBody Map<String, String> body,
+                                                               HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "third");
+        String rawStudentIds = getParam(body, "fourth");
+
+        if (courseId == null) courseId = getParam(body, "course_id");
+        if (rawStudentIds == null) rawStudentIds = getParam(body, "student_ids");
+        if (teacherId == null || courseId == null || rawStudentIds == null) {
+            return Result.error(-10, "Missing params");
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
+        Set<String> studentIds = new LinkedHashSet<>();
+        for (String token : rawStudentIds.split("[,;\\s\\t\\r\\n]+")) {
+            if (token == null) continue;
+            String id = token.trim();
+            if (!id.isEmpty()) {
+                studentIds.add(id);
+            }
+        }
+        if (studentIds.isEmpty()) return Result.error(-10, "No student ids");
+
+        List<String> added = new java.util.ArrayList<>();
+        List<String> existed = new java.util.ArrayList<>();
+        List<String> notFound = new java.util.ArrayList<>();
+
+        for (String studentId : studentIds) {
+            Student student = studentMapper.selectById(studentId);
+            if (student == null) {
+                notFound.add(studentId);
+                continue;
+            }
+
+            Long exists = studentCourseMapper.selectCount(
+                    new LambdaQueryWrapper<StudentCourse>()
+                            .eq(StudentCourse::getStudentId, studentId)
+                            .eq(StudentCourse::getCourseId, courseId));
+            if (exists != null && exists > 0) {
+                existed.add(studentId);
+                continue;
+            }
+
+            StudentCourse sc = new StudentCourse();
+            sc.setStudentId(studentId);
+            sc.setCourseId(courseId);
+            sc.setJoinedTime(LocalDateTime.now());
+            studentCourseMapper.insert(sc);
+            added.add(studentId);
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("total", studentIds.size());
+        summary.put("addedCount", added.size());
+        summary.put("existingCount", existed.size());
+        summary.put("notFoundCount", notFound.size());
+        summary.put("addedIds", added);
+        summary.put("existingIds", existed);
+        summary.put("notFoundIds", notFound);
+        return Result.success(summary);
+    }
+
     // ─────────────────────────────────────────────
     // /Course  —  课程信息
     // ─────────────────────────────────────────────
@@ -117,7 +254,8 @@ public class LegacyCourseController {
      * 返回: "教师id\t\r课程名\t\r课程描述\t\r课程码\t\r学期\t\r是否激活\t\r创建时间"
      */
     @PostMapping("/Course/get_info_by_course_id")
-    public Result<String> getCourseInfoById(@RequestBody Map<String, String> body) {
+    public Result<String> getCourseInfoById(@RequestBody Map<String, String> body,
+                                            HttpServletRequest request) {
         String courseId = getParam(body, "first");
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
@@ -184,9 +322,145 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Course/delete_course")
-    public Result<Void> deleteCourse(@RequestBody Map<String, String> body) {
-        String courseId = getParam(body, "first");
+    public Result<Void> deleteCourse(@RequestBody Map<String, String> body,
+                                     HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "third");
+        if (courseId == null) {
+            courseId = getParam(body, "first");
+            teacherId = getParam(body, "second");
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
         courseMapper.deleteById(courseId);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/archive_course")
+    public Result<Void> archiveCourse(@RequestBody Map<String, String> body,
+                                      HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "third");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        course.setIsActive(2);
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/unarchive_course")
+    public Result<Void> unarchiveCourse(@RequestBody Map<String, String> body,
+                                        HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "third");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        course.setIsActive(1);
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/edit_course")
+    public Result<Void> editCourse(@RequestBody Map<String, String> body,
+                                   HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String name = getParam(body, "fourth");
+        String semesterStr = getParam(body, "fifth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        if (name != null) course.setName(name);
+        if (semesterStr != null && !semesterStr.isEmpty()) {
+            try {
+                course.setSemester(Integer.parseInt(semesterStr.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/edit_info")
+    public Result<Void> editCourseInfo(@RequestBody Map<String, String> body,
+                                       HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String info = getParam(body, "fourth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        course.setInfo(info);
+        courseMapper.updateById(course);
+        return Result.success();
+    }
+
+    @PostMapping("/Course/edit_is_active")
+    public Result<Void> editCourseIsActive(@RequestBody Map<String, String> body,
+                                           HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "second");
+        if (courseId == null) courseId = getParam(body, "first");
+        String isActiveStr = getParam(body, "fourth");
+
+        if (courseId == null) return Result.error(-10, "Missing course id");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        if (isActiveStr != null && !isActiveStr.isEmpty()) {
+            try {
+                course.setIsActive(Integer.parseInt(isActiveStr.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        courseMapper.updateById(course);
         return Result.success();
     }
 
@@ -194,8 +468,19 @@ public class LegacyCourseController {
     // /Course_student — 获取课程下的学生列表
     // ─────────────────────────────────────────────
     @PostMapping("/Course_student/get_student_id_by_course")
-    public Result<String> getStudentIdByCourse(@RequestBody Map<String, String> body) {
+    public Result<String> getStudentIdByCourse(@RequestBody Map<String, String> body,
+                                               HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String courseId = getParam(body, "third");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
         List<StudentCourse> list = studentCourseMapper.selectList(
                 new LambdaQueryWrapper<StudentCourse>().eq(StudentCourse::getCourseId, courseId));
         if (list.isEmpty()) return Result.success("NULL");
@@ -214,7 +499,11 @@ public class LegacyCourseController {
      * 返回: "\t\r" 分隔的 homeworkId 列表，或 "NULL"
      */
     @PostMapping("/Homework/get_homework_id_by_course")
-    public Result<String> getHomeworkIdByCourse(@RequestBody Map<String, String> body) {
+    public Result<String> getHomeworkIdByCourse(@RequestBody Map<String, String> body,
+                                                HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String courseId = getParam(body, "fourth");
         if (courseId == null) {
             courseId = getParam(body, "first"); // some frontend parts use 'First' for courseId
@@ -235,7 +524,8 @@ public class LegacyCourseController {
      * 返回: "课程id\t\r标题\t\r描述\t\r截止日期\t\r创建时间"
      */
     @PostMapping("/Homework/get_info_by_homework_id")
-    public Result<String> getHomeworkInfoById(@RequestBody Map<String, String> body) {
+    public Result<String> getHomeworkInfoById(@RequestBody Map<String, String> body,
+                                              HttpServletRequest request) {
         String homeworkIdStr = getParam(body, "second");
         if (homeworkIdStr == null) homeworkIdStr = getParam(body, "first");
         if (homeworkIdStr == null) return Result.error(-10, "Missing homework id");
@@ -255,7 +545,11 @@ public class LegacyCourseController {
      * 前端发: { first: capacity, second: userId, third: jwt, fourth: homeworkId, fifth: studentId }
      */
     @PostMapping("/Homework/get_submit_id_by_student")
-    public Result<String> getSubmitIdByStudent(@RequestBody Map<String, String> body) {
+    public Result<String> getSubmitIdByStudent(@RequestBody Map<String, String> body,
+                                               HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String homeworkIdStr = getParam(body, "fourth");
         String studentId = getParam(body, "fifth");
         if (homeworkIdStr == null || studentId == null) return Result.error(-10, "Missing params");
@@ -278,7 +572,11 @@ public class LegacyCourseController {
      * 返回: "content_url\t\rscore\t\rai_feedback\t\rteacher_feedback\t\rcreate_time"
      */
     @PostMapping("/Homework/get_submit_info")
-    public Result<String> getSubmitInfo(@RequestBody Map<String, String> body) {
+    public Result<String> getSubmitInfo(@RequestBody Map<String, String> body,
+                                        HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String submitIdStr = getParam(body, "fourth");
         if (submitIdStr == null) submitIdStr = getParam(body, "first");
         if (submitIdStr == null) return Result.error(-10, "Missing submit id");
@@ -297,45 +595,161 @@ public class LegacyCourseController {
 
     /**
      * 更新AI评价
-     * 前端发: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
+     * 支持两种传参方式：
+     * 1. 教师调用（显式参数）: { teacher_id, jwt, submit_id, score, ai_feedback }
+     * 2. 学生/系统调用（位置参数）: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
+     *
+     * 学生调用时无需教师鉴权，仅校验提交记录存在性并更新AI评价字段。
      */
     @PostMapping("/Homework/AI_test")
-    public Result<Void> aiTest(@RequestBody Map<String, String> body) {
-        String submitIdStr = getParam(body, "first");
-        if (submitIdStr == null) return Result.error(-10, "Missing submit id");
+    public Result<Void> aiTest(@RequestBody Map<String, String> body,
+                               HttpServletRequest request) {
+        String teacherId = getParam(body, "teacher_id");
+        String jwt = resolveJwt(body, request);
+        String submitIdStr = getParam(body, "submit_id");
+        String scoreStr = getParam(body, "score");
+        String aiFeedback = getParam(body, "ai_feedback");
 
+        // Legacy positional fallback: { first: submitId, second: videoUrl, third: score, fourth: aiFeedback }
+        if (submitIdStr == null) {
+            submitIdStr = getParam(body, "first");
+            scoreStr = getParam(body, "third");
+            aiFeedback = getParam(body, "fourth");
+        }
+        if (submitIdStr == null) return Result.error(-10, "Missing params");
+
+        // 教师鉴权模式
+        if (teacherId != null && jwt != null) {
+            Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+            if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+            Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
+            if (submit == null) return Result.error(-21, "Submit not found");
+            Homework homework = homeworkMapper.selectById(submit.getHomeworkId());
+            if (homework == null) return Result.error(-21, "Homework not found");
+            Course course = courseMapper.selectById(homework.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+            if (scoreStr != null && !scoreStr.isEmpty()) {
+                try { submit.setScore(Integer.parseInt(scoreStr.trim())); } catch (NumberFormatException ignored) {}
+            }
+            if (aiFeedback != null) submit.setAiFeedback(aiFeedback);
+            submitMapper.updateById(submit);
+            return Result.success();
+        }
+
+        // 学生/系统模式：无需教师鉴权，直接更新AI评价
         Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
         if (submit == null) return Result.error(-21, "Submit not found");
 
-        String scoreStr = getParam(body, "third");
         if (scoreStr != null && !scoreStr.isEmpty()) {
             try { submit.setScore(Integer.parseInt(scoreStr.trim())); } catch (NumberFormatException ignored) {}
         }
-        String aiFeedback = getParam(body, "fourth");
         if (aiFeedback != null) submit.setAiFeedback(aiFeedback);
         submitMapper.updateById(submit);
         return Result.success();
     }
 
+    @PostMapping("/Homework/teacher_test")
+    public Result<Void> teacherTest(@RequestBody Map<String, String> body,
+                                    HttpServletRequest request) {
+        String teacherId = getParam(body, "teacher_id");
+        if (teacherId == null) teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "course_id");
+        if (courseId == null) courseId = getParam(body, "third");
+        String homeworkIdStr = getParam(body, "homework_id");
+        if (homeworkIdStr == null) homeworkIdStr = getParam(body, "fourth");
+        String submitIdStr = getParam(body, "submit_id");
+        if (submitIdStr == null) submitIdStr = getParam(body, "fifth");
+        String scoreStr = getParam(body, "score");
+        if (scoreStr == null) scoreStr = getParam(body, "sixth");
+        String teacherFeedback = getParam(body, "teacher_feedback");
+        if (teacherFeedback == null) teacherFeedback = getParam(body, "seventh");
+
+        if (teacherId == null || courseId == null || homeworkIdStr == null || submitIdStr == null) {
+            return Result.error(-10, "Missing params");
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Submit submit = submitMapper.selectById(Integer.parseInt(submitIdStr.trim()));
+        if (submit == null) return Result.error(-21, "Submit not found");
+        Homework homework = homeworkMapper.selectById(Integer.parseInt(homeworkIdStr.trim()));
+        if (homework == null) return Result.error(-21, "Homework not found");
+        if (!homework.getId().equals(submit.getHomeworkId())) return Result.error(-10, "Submit/Homework mismatch");
+        if (!courseId.equals(homework.getCourseId())) return Result.error(-10, "Course/Homework mismatch");
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        if (scoreStr != null && !scoreStr.isBlank()) {
+            try {
+                int score = Integer.parseInt(scoreStr.trim());
+                if (score < 0 || score > 100) {
+                    return Result.error(-10, "Score must be between 0 and 100");
+                }
+                submit.setScore(score);
+            } catch (NumberFormatException ignored) {
+                return Result.error(-10, "Invalid score");
+            }
+        }
+        submit.setTeacherFeedback(teacherFeedback == null ? "" : teacherFeedback);
+        submitMapper.updateById(submit);
+        return Result.success();
+    }
+
     @PostMapping("/Homework/submit_homework")
-    public Result<Integer> submitHomework(@RequestBody Map<String, String> body) {
-        String studentId = getParam(body, "first"); // or fifth depending on payload, but payload check shows first=studentId here
-        String courseId = getParam(body, "third");
-        String homeworkIdStr = getParam(body, "fourth");
-        String videoUrl = getParam(body, "fifth");
+    public Result<Integer> submitHomework(@RequestBody Map<String, String> body,
+                                          HttpServletRequest request) {
+        String studentId = getParam(body, "student_id");
+        if (studentId == null) studentId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+
+        String courseId = getParam(body, "course_id");
+        if (courseId == null) courseId = getParam(body, "third");
+        String homeworkIdStr = getParam(body, "homework_id");
+        if (homeworkIdStr == null) homeworkIdStr = getParam(body, "fourth");
+        if (homeworkIdStr == null) homeworkIdStr = getParam(body, "third");
+        String videoUrl = getParam(body, "video_url");
+        if (videoUrl == null) videoUrl = getParam(body, "fifth");
+        if (videoUrl == null) videoUrl = getParam(body, "fourth");
+        if (studentId == null || homeworkIdStr == null) return Result.error(-10, "Missing params");
+
+        Result<Void> auth = userService.checkJwt(0, studentId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Homework homework = homeworkMapper.selectById(Integer.parseInt(homeworkIdStr.trim()));
+        if (homework == null) return Result.error(-21, "Homework not found");
+        if (courseId != null && !courseId.equals(homework.getCourseId())) return Result.error(-10, "Course/Homework mismatch");
+        Course course = courseMapper.selectById(homework.getCourseId());
+        if (course == null) return Result.error(-21, "Course not found");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
+        Long enrolled = studentCourseMapper.selectCount(
+                new LambdaQueryWrapper<StudentCourse>()
+                        .eq(StudentCourse::getStudentId, studentId)
+                        .eq(StudentCourse::getCourseId, homework.getCourseId()));
+        if (enrolled == 0) return Result.error(-23, "JWT Error");
 
         Submit submit = new Submit();
         submit.setStudentId(studentId);
-        submit.setHomeworkId(Integer.parseInt(homeworkIdStr.trim()));
+        submit.setHomeworkId(homework.getId());
         submit.setVideoUrl(videoUrl);
         submit.setCreateTime(LocalDateTime.now());
         submitMapper.insert(submit);
-        // Returning ID for AI_test link
         return Result.success(submit.getId());
     }
 
     @PostMapping("/Homework/get_final_score")
-    public Result<Integer> getFinalScore(@RequestBody Map<String, String> body) {
+    public Result<Integer> getFinalScore(@RequestBody Map<String, String> body,
+                                         HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String studentId = getParam(body, "fourth");
         String homeworkIdStr = getParam(body, "fifth");
         if (homeworkIdStr == null) {
@@ -362,8 +776,12 @@ public class LegacyCourseController {
         String courseId = getParam(body, "third");
         String hwIdStr = getParam(body, "fourth");
 
-        Result<Void> auth = userService.checkJwt(0, teacherId, jwt);
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
         if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
 
         List<StudentCourse> enrollments = studentCourseMapper.selectList(
                 new LambdaQueryWrapper<StudentCourse>().eq(StudentCourse::getCourseId, courseId));
@@ -388,26 +806,100 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Homework/new_homework")
-    public Result<String> newHomework(@RequestBody Map<String, String> body) {
-        String courseId = getParam(body, "first");
+    public Result<String> newHomework(@RequestBody Map<String, String> body,
+                                      HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String courseId = getParam(body, "third");
+        if (courseId == null) {
+            courseId = getParam(body, "first");
+            teacherId = getParam(body, "second");
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
         Homework hw = new Homework();
         hw.setCourseId(courseId);
-        hw.setTitle(getParam(body, "second"));
-        String deadlineStr = getParam(body, "third");
-        hw.setDeadline(LocalDateTime.parse(deadlineStr.replace("Z", "")));
-        hw.setDescription(getParam(body, "fourth"));
+        String title = getParam(body, "title");
+        if (title == null) title = getParam(body, "fourth");
+        if (title == null) title = getParam(body, "second");
+        hw.setTitle(title);
+
+        String description = getParam(body, "description");
+        if (description == null) description = getParam(body, "fifth");
+        if (description == null) description = getParam(body, "fourth");
+
+        String deadlineStr = getParam(body, "deadline");
+        if (deadlineStr == null) deadlineStr = getParam(body, "sixth");
+        if (deadlineStr == null) deadlineStr = getParam(body, "fourth");
+        if (courseId != null && courseId.equals(deadlineStr)) {
+            deadlineStr = getParam(body, "sixth");
+        }
+        hw.setDeadline(parseDateTime(deadlineStr));
+        hw.setDescription(description);
         hw.setCreateTime(LocalDateTime.now());
         homeworkMapper.insert(hw);
         return Result.success(String.valueOf(hw.getId()));
     }
 
     @PostMapping("/Homework/set_AI_type")
-    public Result<Void> setAiType(@RequestBody Map<String, String> body) {
-        String hwIdStr = getParam(body, "first");
+    public Result<Void> setAiType(@RequestBody Map<String, String> body,
+                                  HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String hwIdStr = getParam(body, "third");
+        String type = getParam(body, "fourth");
+        String num = getParam(body, "fifth");
+        String courseId = getParam(body, "course_id");
+        if (courseId == null) courseId = getParam(body, "third");
+        String explicitHwId = getParam(body, "homework_id");
+        if (explicitHwId == null) explicitHwId = getParam(body, "fourth");
+        String explicitType = getParam(body, "type");
+        if (explicitType == null) explicitType = getParam(body, "fifth");
+        String explicitNum = getParam(body, "num");
+        if (explicitNum == null) explicitNum = getParam(body, "sixth");
+        if (explicitHwId != null && explicitType != null && explicitNum != null) {
+            hwIdStr = explicitHwId;
+            type = explicitType;
+            num = explicitNum;
+        }
+        if (num == null) {
+            hwIdStr = getParam(body, "first");
+            type = getParam(body, "second");
+            num = getParam(body, "third");
+            Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
+            if (hw == null) return Result.error(-21, "Homework not found");
+            Course course = courseMapper.selectById(hw.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            teacherId = course.getTeacherId();
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        if (courseId != null && explicitHwId != null) {
+            Course course = courseMapper.selectById(courseId);
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        }
+
+        Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
+        if (hw == null) return Result.error(-21, "Homework not found");
+        Course course = courseMapper.selectById(hw.getCourseId());
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         AiType ai = new AiType();
         ai.setHomeworkId(Integer.parseInt(hwIdStr.trim()));
-        ai.setType(getParam(body, "second"));
-        ai.setNum(Integer.parseInt(getParam(body, "third").trim()));
+        ai.setType(type);
+        ai.setNum(Integer.parseInt(num.trim()));
         aiTypeMapper.insert(ai);
         return Result.success();
     }
@@ -421,19 +913,50 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Homework/edit_AI_type")
-    public Result<Void> editAiType(@RequestBody Map<String, String> body) {
-        String hwIdStr = getParam(body, "first");
+    public Result<Void> editAiType(@RequestBody Map<String, String> body,
+                                   HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
+        String hwIdStr = getParam(body, "third");
+        String type = getParam(body, "fourth");
+        String num = getParam(body, "fifth");
+        if (num == null) {
+            hwIdStr = getParam(body, "first");
+            type = getParam(body, "second");
+            num = getParam(body, "third");
+            Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
+            if (hw == null) return Result.error(-21, "Homework not found");
+            Course course = courseMapper.selectById(hw.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            teacherId = course.getTeacherId();
+        }
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
+        if (hw == null) return Result.error(-21, "Homework not found");
+        Course course = courseMapper.selectById(hw.getCourseId());
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         AiType ai = aiTypeMapper.selectById(Integer.parseInt(hwIdStr.trim()));
         if (ai != null) {
-            ai.setType(getParam(body, "second"));
-            ai.setNum(Integer.parseInt(getParam(body, "third").trim()));
+            ai.setType(type);
+            ai.setNum(Integer.parseInt(num.trim()));
             aiTypeMapper.updateById(ai);
         }
         return Result.success();
     }
 
     @PostMapping("/Homework/get_submit_id_by_AI_not_test")
-    public Result<String> getSubmitIdByAINotTest(@RequestBody Map<String, String> body) {
+    public Result<String> getSubmitIdByAINotTest(@RequestBody Map<String, String> body,
+                                                 HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String hwIdStr = getParam(body, "first");
         List<Submit> list = submitMapper.selectList(
                 new LambdaQueryWrapper<Submit>()
@@ -445,7 +968,11 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Homework/get_submit_id_by_teacher_not_test")
-    public Result<String> getSubmitIdByTeacherNotTest(@RequestBody Map<String, String> body) {
+    public Result<String> getSubmitIdByTeacherNotTest(@RequestBody Map<String, String> body,
+                                                      HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String hwIdStr = getParam(body, "first");
         List<Submit> list = submitMapper.selectList(
                 new LambdaQueryWrapper<Submit>()
@@ -458,15 +985,27 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Homework/edit_homework")
-    public Result<Void> editHomework(@RequestBody Map<String, String> body) {
+    public Result<Void> editHomework(@RequestBody Map<String, String> body,
+                                     HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String hwIdStr = getParam(body, "fourth");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
         if (hw != null) {
+            Course course = courseMapper.selectById(hw.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+            Result<Void> archivedCheck = rejectIfCourseArchived(course);
+            if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
             hw.setTitle(getParam(body, "fifth"));
             hw.setDescription(getParam(body, "sixth"));
             String deadlineStr = getParam(body, "seventh");
             if (deadlineStr != null && !deadlineStr.isEmpty()) {
-                hw.setDeadline(LocalDateTime.parse(deadlineStr.replace("Z", "")));
+                hw.setDeadline(parseDateTime(deadlineStr));
             }
             homeworkMapper.updateById(hw);
         }
@@ -474,14 +1013,33 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Homework/delete_homework")
-    public Result<Void> deleteHomework(@RequestBody Map<String, String> body) {
+    public Result<Void> deleteHomework(@RequestBody Map<String, String> body,
+                                       HttpServletRequest request) {
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String hwIdStr = getParam(body, "fourth");
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Homework hw = homeworkMapper.selectById(Integer.parseInt(hwIdStr.trim()));
+        if (hw == null) return Result.error(-21, "Homework not found");
+        Course course = courseMapper.selectById(hw.getCourseId());
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         homeworkMapper.deleteById(Integer.parseInt(hwIdStr.trim()));
         return Result.success();
     }
 
     @PostMapping("/Homework/get_submit_id_by_homework")
-    public Result<String> getSubmitIdByHomework(@RequestBody Map<String, String> body) {
+    public Result<String> getSubmitIdByHomework(@RequestBody Map<String, String> body,
+                                                HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         String hwIdStr = getParam(body, "fourth");
         List<Submit> list = submitMapper.selectList(
                 new LambdaQueryWrapper<Submit>()
@@ -519,6 +1077,12 @@ public class LegacyCourseController {
         Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
         if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
 
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         studentCourseMapper.delete(
                 new LambdaQueryWrapper<StudentCourse>()
                         .eq(StudentCourse::getStudentId, studentId)
@@ -531,7 +1095,11 @@ public class LegacyCourseController {
     // ─────────────────────────────────────────────
 
     @PostMapping("/Class/get_class_id_by_course")
-    public Result<String> getClassIdByCourse(@RequestBody Map<String, String> body) {
+    public Result<String> getClassIdByCourse(@RequestBody Map<String, String> body,
+                                             HttpServletRequest request) {
+        Result<Void> auth = checkLegacyAuth(body, request);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         // Frontend sends: { first: capacity, second: teacherId, third: jwt, fourth: courseId }
         // or sometimes: { first: courseId }
         String courseId = getParam(body, "fourth");
@@ -551,7 +1119,8 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Class/get_info_by_class_id")
-    public Result<String> getClassInfoById(@RequestBody Map<String, String> body) {
+    public Result<String> getClassInfoById(@RequestBody Map<String, String> body,
+                                           HttpServletRequest request) {
         // Try second first, as it's often the classId in (courseId, classId) pairs
         String classIdStr = getParam(body, "second");
         
@@ -580,63 +1149,100 @@ public class LegacyCourseController {
     }
 
     @PostMapping("/Class/new_class")
-    public Result<Void> newClass(@RequestBody Map<String, String> body) {
+    public Result<Void> newClass(@RequestBody Map<String, String> body,
+                                 HttpServletRequest request) {
         // Frontend sends: { first: teacherId, second: jwt, third: courseId, fourth: title, fifth: description, sixth: url }
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String courseId = getParam(body, "third");
         if (courseId == null) courseId = getParam(body, "first");
-        
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         CourseClass c = new CourseClass();
         c.setCourseId(courseId);
         c.setTitle(getParam(body, "fourth"));
         if (c.getTitle() == null) c.setTitle(getParam(body, "second"));
-        
+
         c.setContentUrl(getParam(body, "sixth"));
         if (c.getContentUrl() == null) c.setContentUrl(getParam(body, "third"));
-        
+
         c.setDescription(getParam(body, "fifth"));
         if (c.getDescription() == null) c.setDescription(getParam(body, "fourth"));
-        
+
         c.setCreateTime(LocalDateTime.now());
         courseClassMapper.insert(c);
         return Result.success();
     }
 
     @PostMapping("/Class/edit_class")
-    public Result<Void> editClass(@RequestBody Map<String, String> body) {
+    public Result<Void> editClass(@RequestBody Map<String, String> body,
+                                  HttpServletRequest request) {
         // Frontend sends: { first: teacherId, second: jwt, third: courseId, fourth: classId, fifth: title, sixth: description, seventh: url }
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String classIdStr = getParam(body, "fourth");
         if (classIdStr == null || classIdStr.length() > 10) { // classId is usually a small int string, teacherId/courseId are long
             classIdStr = getParam(body, "first");
         }
-        
+
         if (classIdStr == null) return Result.error(-10, "Missing class id");
-        
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
         CourseClass c = courseClassMapper.selectById(Integer.parseInt(classIdStr.trim()));
         if (c != null) {
+            Course course = courseMapper.selectById(c.getCourseId());
+            if (course == null) return Result.error(-21, "Course not found");
+            if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+            Result<Void> archivedCheck = rejectIfCourseArchived(course);
+            if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
             c.setTitle(getParam(body, "fifth"));
             if (c.getTitle() == null) c.setTitle(getParam(body, "second"));
-            
+
             c.setContentUrl(getParam(body, "seventh"));
             if (c.getContentUrl() == null) c.setContentUrl(getParam(body, "third"));
-            
+
             c.setDescription(getParam(body, "sixth"));
             if (c.getDescription() == null) c.setDescription(getParam(body, "fourth"));
-            
+
             courseClassMapper.updateById(c);
         }
         return Result.success();
     }
 
     @PostMapping("/Class/delete_class")
-    public Result<Void> deleteClass(@RequestBody Map<String, String> body) {
+    public Result<Void> deleteClass(@RequestBody Map<String, String> body,
+                                    HttpServletRequest request) {
         // Frontend sends: { first: teacherId, second: jwt, third: courseId, fourth: classId }
+        String teacherId = getParam(body, "first");
+        String jwt = resolveJwt(body, request);
         String classIdStr = getParam(body, "fourth");
         if (classIdStr == null || classIdStr.length() > 10) {
             classIdStr = getParam(body, "first");
         }
-        
+
         if (classIdStr == null) return Result.error(-10, "Missing class id");
-        
+
+        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+        CourseClass courseClass = courseClassMapper.selectById(Integer.parseInt(classIdStr.trim()));
+        if (courseClass == null) return Result.error(-21, "Class not found");
+        Course course = courseMapper.selectById(courseClass.getCourseId());
+        if (course == null) return Result.error(-21, "Course not found");
+        if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         courseClassMapper.deleteById(Integer.parseInt(classIdStr.trim()));
         return Result.success();
     }
@@ -651,5 +1257,13 @@ public class LegacyCourseController {
     private boolean isNumeric(String s) {
         if (s == null || s.trim().isEmpty()) return false;
         return s.trim().matches("\\d+");
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        String normalized = value == null ? "" : value.trim().replace("Z", "");
+        if (normalized.contains("T")) {
+            return LocalDateTime.parse(normalized);
+        }
+        return LocalDateTime.parse(normalized, LEGACY_DATE_TIME_FORMATTER);
     }
 }

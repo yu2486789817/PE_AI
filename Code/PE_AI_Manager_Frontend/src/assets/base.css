@@ -1,4 +1,4 @@
-*,
+﻿*,
 *::before,
 *::after {
   box-sizing: border-box;
@@ -6,25 +6,45 @@
   padding: 0;
 }
 
+:root {
+  --web-primary-500: #236df2;
+  --web-primary-600: #1d5fdd;
+  --web-primary-700: #1a4dac;
+  --web-success-500: #139769;
+  --web-success-600: #0f8059;
+  --web-warning-500: #ea8814;
+  --web-warning-600: #c16e10;
+  --web-warning-700: #90500a;
+  --web-danger-500: #d63e35;
+  --web-danger-600: #b4322a;
+  --web-danger-700: #8f251f;
+  --web-ink-900: #172033;
+  --web-ink-800: #22304a;
+  --web-ink-700: #2b3851;
+  --web-ink-600: #44516e;
+  --web-ink-500: #67748f;
+  --web-line-100: #e8edf7;
+  --web-line-200: #d8e0ee;
+  --web-surface-100: #f7f9fe;
+  --web-surface-200: #eff3fb;
+  --web-surface-card: #ffffff;
+  --web-radius-md: 12px;
+  --web-radius-lg: 16px;
+  --web-radius-xl: 22px;
+  --web-shadow-card: 0 10px 24px rgba(23, 56, 122, 0.08);
+  --web-shadow-soft: 0 20px 40px rgba(15, 44, 96, 0.12);
+  --web-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body {
   min-height: 100vh;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
+  font-family: 'DIN Alternate', 'Avenir Next', 'PingFang SC', 'Noto Sans SC', sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #333;
-  background-color: #fff;
+  color: var(--web-ink-900);
+  background: radial-gradient(circle at 10% 10%, rgba(35, 109, 242, 0.12), transparent 35%),
+    radial-gradient(circle at 92% 0%, rgba(40, 170, 246, 0.1), transparent 30%),
+    linear-gradient(180deg, #f9fbff 0%, #f1f5fd 100%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
