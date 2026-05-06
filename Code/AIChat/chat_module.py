@@ -17,6 +17,7 @@ import sqlite3
 import tempfile
 import logging
 import json
+import re
 from typing import Dict, List, Optional
 
 import requests
@@ -29,6 +30,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _clean_model_response(content: str) -> str:
+    text = (content or "").strip()
+    return re.sub(r"^(system|assistant|user)\s*[:：]?\s*", "", text, flags=re.IGNORECASE).strip()
+
+
+def _make_session_title(user_input: str) -> str:
+    title = re.sub(r"\s+", " ", (user_input or "").strip())
+    title = re.sub(r"[#*_`>\\[\\]{}()]+", "", title).strip(" ，。！？,.!?;；:：\"'")
+    if not title:
+        return "新对话"
+    return title[:10]
+
 # ================= 路径配置 =================
 # 获取当前脚本所在目录，确保无论在哪里运行都使用正确的路径
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +51,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # 只使用微调模型
 MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "auto").lower()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-3b-pe-sports:q4_k_m")
 FINETUNED_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-PE-Sports")
 BASE_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "Qwen2.5-3B-Instruct")
 MODEL_PATH = os.getenv("MODEL_PATH", FINETUNED_MODEL_PATH)
@@ -210,15 +224,16 @@ class LocalLLM:
         torch.cuda.empty_cache()
 
         with torch.no_grad():
-            outputs = self._model.generate(
-                **inputs,
-                max_new_tokens=max_tokens or MAX_TOKENS,
-                do_sample=False,  # 贪婪解码，更快
-                pad_token_id=self._tokenizer.pad_token_id,
-                eos_token_id=self._tokenizer.eos_token_id,
-                repetition_penalty=1.05,
-                use_cache=True
-            )
+            generate_kwargs = {
+                "do_sample": False,  # 贪婪解码，更快
+                "pad_token_id": self._tokenizer.pad_token_id,
+                "eos_token_id": self._tokenizer.eos_token_id,
+                "repetition_penalty": 1.05,
+                "use_cache": True,
+            }
+            if max_tokens is not None:
+                generate_kwargs["max_new_tokens"] = max_tokens
+            outputs = self._model.generate(**inputs, **generate_kwargs)
 
         t3 = time.time()
         logger.info(f"[性能] 模型推理耗时: {t3-t2:.2f}s, 生成 token 数: {outputs.shape[1] - inputs['input_ids'].shape[1]}")
@@ -269,8 +284,6 @@ class OllamaLLM:
         }
         if max_tokens is not None:
             options["num_predict"] = max_tokens
-        elif MAX_TOKENS is not None:
-            options["num_predict"] = MAX_TOKENS
 
         response = requests.post(
             f"{self.base_url}/api/chat",
@@ -299,8 +312,8 @@ class OllamaLLM:
         message = data.get("message", {})
         content = message.get("content", "")
         if content:
-            return content.strip()
-        return message.get("thinking", "").strip()
+            return _clean_model_response(content)
+        return _clean_model_response(message.get("thinking", ""))
 
 
 _llm_instance = None
@@ -412,7 +425,7 @@ class ChatManager:
 
         cursor.execute(
             "SELECT role, content, model FROM messages WHERE session_id = ? "
-            "AND role IN ('user', 'assistant') ORDER BY timestamp",
+                "AND role IN ('user', 'assistant') ORDER BY timestamp, id",
             (session_row["id"],)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
@@ -442,7 +455,7 @@ class ChatManager:
 
         cursor.execute(
             "SELECT role, content, model FROM messages WHERE session_id = ? "
-            "AND role IN ('user', 'assistant') ORDER BY timestamp",
+                "AND role IN ('user', 'assistant') ORDER BY timestamp, id",
             (session_id,)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
@@ -464,7 +477,7 @@ class ChatManager:
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp",
+                "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp, id",
             (session_id,)
         )
         messages = [{"role": row[0], "content": row[1]} for row in cursor.fetchall()]
@@ -474,16 +487,7 @@ class ChatManager:
 
     def update_session_title(self, session_id: int, user_input: str, model_name: str = None) -> None:
         """生成会话标题。"""
-        try:
-            prompt = f"Please generate a very short title (no more than 6 characters, no punctuation) based on the user's message:\n\"{user_input}\""
-            messages = [{"role": "user", "content": prompt}]
-            title = model_predict(None, messages, max_tokens=TITLE_MAX_TOKENS)
-            title = title.strip(' " "\'\n').replace('Title:', '').replace('Title：', '')
-            if len(title) > 10:
-                title = title[:10]
-        except Exception as e:
-            print(f"Failed to generate title: {e}")
-            title = user_input[:10] + "..." if len(user_input) > 10 else user_input
+        title = _make_session_title(user_input)
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -530,6 +534,28 @@ class ChatManager:
             (session_id,)
         )
 
+        conn.commit()
+        conn.close()
+        return True
+
+    def update_first_system_message(self, session_id: int, content: str, model: str = None) -> bool:
+        """更新会话第一条 system 消息。"""
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id FROM messages WHERE session_id = ? AND role = 'system' ORDER BY timestamp, id LIMIT 1",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+
+        cursor.execute(
+            "UPDATE messages SET content = ?, model = ? WHERE id = ?",
+            (content, model or get_model_provider(), row[0])
+        )
         conn.commit()
         conn.close()
         return True

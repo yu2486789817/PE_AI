@@ -166,7 +166,8 @@ const loadingSessions = ref(false)
 const loadingMessages = ref(false)
 const sendingMessage = ref(false)
 const generatingReport = ref(false)
-const selectedModel = ref('ollama:gemma4')
+const defaultModel = 'ollama:qwen2.5-3b-pe-sports:q4_k_m'
+const selectedModel = ref(defaultModel)
 const availableModels = ref([])
 
 const formatModelLabel = (provider, modelName) => {
@@ -209,16 +210,20 @@ const normalizeSelectedModel = (modelValue) => {
     return modelValue
   }
   if (modelValue === 'ollama') {
-    return availableModels.value[0]?.value || 'ollama:gemma4'
+    return availableModels.value[0]?.value || defaultModel
   }
-  return availableModels.value[0]?.value || modelValue || 'ollama:gemma4'
+  return availableModels.value[0]?.value || modelValue || defaultModel
 }
 
 const displayModelLabel = (modelValue) => {
   if (modelValue === 'ollama') {
-    return availableModels.value[0]?.label || 'ollama:gemma4'
+    return availableModels.value[0]?.label || defaultModel
   }
   return modelValue || ''
+}
+
+const visibleMessages = (items = []) => {
+  return items.filter(message => message?.role !== 'system')
 }
 
 // Markdown渲染函数
@@ -259,7 +264,7 @@ const createNewSession = async () => {
     if (result.success && result.data) {
       currentSessionId.value = result.data.session_id
       currentSession.value = result.data.session
-      messages.value = result.data.session.messages || []
+      messages.value = visibleMessages(result.data.session.messages || [])
 
       // 刷新会话列表
       await loadSessions()
@@ -283,7 +288,7 @@ const switchSession = async (sessionId) => {
     if (result.success && result.data) {
       currentSessionId.value = sessionId
       currentSession.value = result.data
-      messages.value = result.data.messages || []
+      messages.value = visibleMessages(result.data.messages || [])
       selectedModel.value = normalizeSelectedModel(result.data.model)
 
       // 滚动到底部
@@ -345,7 +350,7 @@ const sendMessage = async () => {
     if (result.success && result.data) {
       // 更新会话和消息
       currentSession.value = result.data.session
-      messages.value = result.data.session.messages || []
+      messages.value = visibleMessages(result.data.session.messages || [])
 
       // 更新会话列表中的标题
       const sessionIndex = sessions.value.findIndex(s => s.session_id === currentSessionId.value)
@@ -490,14 +495,14 @@ onMounted(async () => {
     if (modelsResult.success && modelsResult.data) {
       availableModels.value = normalizeModels(modelsResult.data)
       if (!availableModels.value.length) {
-        availableModels.value = [{ label: 'ollama:gemma4', value: 'ollama:gemma4' }]
+        availableModels.value = [{ label: defaultModel, value: defaultModel }]
       }
       if (!availableModels.value.some(model => model.value === selectedModel.value)) {
         selectedModel.value = availableModels.value[0].value
       }
     } else {
-      availableModels.value = [{ label: 'ollama:gemma4', value: 'ollama:gemma4' }]
-      selectedModel.value = 'ollama:gemma4'
+      availableModels.value = [{ label: defaultModel, value: defaultModel }]
+      selectedModel.value = defaultModel
     }
 
     // 加载会话列表

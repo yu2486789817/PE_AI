@@ -26,6 +26,7 @@ API 接口设计：
 import os
 import json
 import logging
+from fastapi import BackgroundTasks
 from typing import Dict, List
 
 import uvicorn
@@ -50,7 +51,8 @@ from report_module import (
     query_analysis_report,
     get_recent_analyses,
     get_yolo_student_all_records,
-    _parse_feedback_json
+    _parse_feedback_json,
+    _summarize_exercise_data
 )
 
 # ================= 日志配置 =================
@@ -59,6 +61,38 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+LOAD_HISTORY_ON_CREATE = os.getenv("LOAD_HISTORY_ON_CREATE", "background").lower()
+
+
+def _build_student_system_prompt(role: str, context_str: str) -> str:
+    return (
+        f"当前用户角色：{role}\n"
+        "如果学生询问你是否能看到运动历史，只要下方学生数据不是“暂无近期运动数据记录”，"
+        "必须明确回答可以看到，并基于数据摘要说明。\n"
+        + SYSTEM_PROMPTS["student_coach"].format(context=context_str)
+    )
+
+
+def _build_student_history_context(records: list) -> str:
+    records = _parse_feedback_json(records)
+    recent_records = records[-5:]
+    summary = _summarize_exercise_data(recent_records)
+    return json.dumps(summary, ensure_ascii=False)
+
+
+def _load_student_history_prompt(session_id: int, user_id: str, role: str, model_name: str = None) -> None:
+    try:
+        records = get_yolo_student_all_records(user_id)
+        if not records or not isinstance(records, list):
+            logger.info(f"create_session: no student history for {user_id}")
+            return
+
+        context_str = _build_student_history_context(records)
+        system_prompt = _build_student_system_prompt(role, context_str)
+        chat_mgr.update_first_system_message(session_id, system_prompt, model_name)
+        logger.info(f"create_session: background loaded student {user_id} history {len(records)} records")
+    except Exception as e:
+        logger.warning(f"create_session: background student history load failed: {e}")
 
 # ================= FastAPI 应用初始化 =================
 app = FastAPI(
@@ -133,7 +167,7 @@ async def list_sessions(user_id: str):
 
 
 @app.post('/api/sessions')
-async def create_session(request: Request):
+async def create_session(request: Request, background_tasks: BackgroundTasks):
     """
     为指定用户创建新会话。
 
@@ -188,22 +222,21 @@ async def create_session(request: Request):
         else:
             # 学生角色：使用私人教练 Prompt，并注入历史运动数据
             context_str = "暂无近期运动数据记录。"
-            try:
-                # 从 Yolo_backend 获取学生历史运动数据
-                records = get_yolo_student_all_records(user_id)
-                if records and isinstance(records, list) and len(records) > 0:
-                    # 解析 feedback_json 字段，避免双重编码
-                    records = _parse_feedback_json(records)
-                    # 取最近的5条记录以避免 Prompt 过长
-                    recent_records = records[-5:]
-                    context_str = json.dumps(recent_records, ensure_ascii=False)
-                    logger.info(f"create_session: 获取学生 {user_id} 历史记录 {len(records)} 条")
-            except Exception as e:
-                # 获取失败不影响会话创建，使用默认提示
-                logger.warning(f"create_session: 获取学生历史运动记录失败（Yolo_backend 可能未启动）: {e}")
+            if LOAD_HISTORY_ON_CREATE == "true":
+                try:
+                    # 从 Yolo_backend 获取学生历史运动数据
+                    records = get_yolo_student_all_records(user_id)
+                    if records and isinstance(records, list) and len(records) > 0:
+                        context_str = _build_student_history_context(records)
+                        logger.info(f"create_session: 获取学生 {user_id} 历史记录 {len(records)} 条")
+                except Exception as e:
+                    # 获取失败不影响会话创建，使用默认提示
+                    logger.warning(f"create_session: 获取学生历史运动记录失败（Yolo_backend 可能未启动）: {e}")
+            else:
+                logger.info("create_session: defer student history preload")
 
-            system_prompt = f"当前用户角色：{role}\n" + SYSTEM_PROMPTS["student_coach"].format(context=context_str)
-            welcome_msg_content = "你好！我是你的专属AI运动私教。我已经同步了你近期的运动考核数据，随时可以为你提供定制化的训练指导和动作纠正建议。今天想练点什么？"
+            system_prompt = _build_student_system_prompt(role, context_str)
+            welcome_msg_content = "你好！我是你的专属AI运动私教。我会在后台同步你的近期运动考核数据，同步后可以为你提供定制化的训练指导和动作纠正建议。今天想练点什么？"
 
         # 添加 System Prompt 和欢迎消息
         chat_mgr.add_message(session_id, "system", system_prompt, model_name)
@@ -213,6 +246,9 @@ async def create_session(request: Request):
             "content": welcome_msg_content
         }
         chat_mgr.add_message(session_id, "assistant", welcome_msg["content"], model_name)
+        session = chat_mgr.get_session_by_id(session_id)
+        if role != 'teacher' and LOAD_HISTORY_ON_CREATE == "background":
+            background_tasks.add_task(_load_student_history_prompt, session_id, user_id, role, model_name)
 
         return JSONResponse({
             "success": True,
@@ -382,10 +418,11 @@ async def send_message(session_id: int, request: Request):
 
         # 获取更新后的会话（包含新消息）
         updated_session = chat_mgr.get_session_by_id(session_id)
+        model_messages = chat_mgr.get_session_messages_with_system(session_id)
 
         # 调用 AI 模型生成回复
         logger.info(f"send_message: 调用模型生成回复...")
-        response = model_predict(model_name, updated_session["messages"])
+        response = model_predict(model_name, model_messages)
         logger.info(f"send_message: 生成回复完成，长度={len(response)}")
 
         # 添加 AI 回复到历史

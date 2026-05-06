@@ -101,3 +101,12 @@ data/
 *.temp
 *.swp
 *~
+
+# Local course/report artifacts
+/2026_Slides Lesson09-10_Software Cost Estimation V2.pdf
+/6089464.txt
+/Experiment2_Software_Size_Measurement.pdf
+/Experiment_2_Report.md
+/Experiment_2_Report_ZH.md
+/Code/2026_Slides Lesson09-10_Software Cost Estimation V2.pdf
+/Code/实验二_软件规模度量_功能点分析.pdf
