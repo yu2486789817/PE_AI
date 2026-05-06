@@ -1,0 +1,27 @@
+# Modelfile for Qwen2.5-3B-PE-Sports
+# 用于将微调后的体育教学模型导入 Ollama
+
+# 使用转换后的 GGUF 模型文件
+FROM ../models/qwen2.5-pe-sports.q4_k_m.gguf
+
+# 模型参数设置
+PARAMETER temperature 0.9
+PARAMETER num_predict 512
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+
+# 系统提示词模板（ChatML 格式）
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>
+"""
+
+# 停止词
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+
+# 默认系统提示
+SYSTEM You are a professional sports coaching assistant specialized in physical education.
