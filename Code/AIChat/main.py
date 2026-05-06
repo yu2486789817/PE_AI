@@ -487,7 +487,7 @@ async def list_models():
         }
     """
     try:
-        from chat_module import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_TOKENS, TEMPERATURE
+        from chat_module import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_TOKENS, TEMPERATURE, get_available_models
 
         # 尝试获取 Ollama 服务中的模型列表
         try:
@@ -500,23 +500,6 @@ async def list_models():
         except:
             model_info = None
 
-        data = {
-            "model": provider,
-            "model_path": MODEL_PATH,
-            "is_finetuned": is_finetuned,
-            "base_model": BASE_MODEL_PATH,
-            "quantization": quantization,
-            "available_models": get_available_models()
-        }
-        if provider == "ollama":
-            data.update({
-                "model_path": OLLAMA_BASE_URL,
-                "base_model": None,
-                "is_finetuned": False,
-                "quantization": None,
-                "ollama_model": OLLAMA_MODEL,
-            })
-
         return JSONResponse({
             "success": True,
             "data": {
@@ -525,7 +508,8 @@ async def list_models():
                 "model": OLLAMA_MODEL,
                 "max_tokens": MAX_TOKENS,
                 "temperature": TEMPERATURE,
-                "model_info": model_info
+                "model_info": model_info,
+                "available_models": get_available_models()
             }
         })
     except Exception as e:

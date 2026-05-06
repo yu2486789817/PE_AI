@@ -29,6 +29,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ================= 路径配置 =================
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ================= 模型配置 =================
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "ollama")
+AVAILABLE_MODELS = os.getenv("AVAILABLE_MODELS", "qwen2.5-pe-sports").split(",")
+TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "20"))
+
 # ================= Ollama 配置 =================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-pe-sports")
@@ -178,11 +186,11 @@ def get_llm() -> OllamaLLM:
     return _llm_instance
 
 
-def model_predict(model_name: str, messages: List[Dict]) -> str:
+def model_predict(model_name: str, messages: List[Dict], max_tokens: int = None) -> str:
     """调用 Ollama 模型生成回复。"""
     try:
         llm = get_llm()
-        return llm.predict(messages)
+        return llm.predict(messages, max_tokens=max_tokens)
     except Exception as e:
         return f"Error: {str(e)}"
 
