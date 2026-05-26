@@ -1,4 +1,5 @@
 server:
+  address: 0.0.0.0
   port: 5001
 
 spring:
@@ -29,6 +30,8 @@ mybatis-plus:
 # AI services
 ai:
   yolo:
+    base-url: http://localhost:8000
+  video:
     base-url: http://localhost:8000
   chat:
     base-url: http://localhost:5000

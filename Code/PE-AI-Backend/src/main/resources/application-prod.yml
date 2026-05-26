@@ -1,0 +1,46 @@
+server:
+  address: 0.0.0.0
+  port: ${PORT:5001}
+
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 0
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 512MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+ai:
+  yolo:
+    base-url: ${YOLO_BASE_URL:http://localhost:8000}
+  video:
+    base-url: ${YOLO_BASE_URL:http://localhost:8000}
+  chat:
+    base-url: ${AICHAT_BASE_URL:http://localhost:5000}
+
+jwt:
+  secret: ${JWT_SECRET:PE_AI_MANAGER_SECRET_KEY_2025_CHANGE_IN_PRODUCTION}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+file:
+  upload-dir: ${UPLOAD_DIR:/tmp/pe-ai-uploads}

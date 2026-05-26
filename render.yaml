@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: pe-ai-backend
+    runtime: docker
+    plan: free
+    rootDir: Code/PE-AI-Backend
+    healthCheckPath: /health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: YOLO_BASE_URL
+        value: http://localhost:8000
+      - key: AICHAT_BASE_URL
+        value: http://localhost:5000
