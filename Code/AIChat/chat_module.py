@@ -8,7 +8,7 @@ chat_module.py - AI 聊天核心模块
 
 模型配置：
 - Ollama 服务地址: http://localhost:11434
-- 模型名称: qwen2.5-pe-sports（需先导入到 Ollama）
+- 模型名称: peai（需先导入到 Ollama）
 """
 
 import os
@@ -16,7 +16,7 @@ import time
 import sqlite3
 import tempfile
 import logging
-import requests
+import re
 from typing import Dict, List, Optional
 
 import requests
@@ -29,19 +29,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ================= 路径配置 =================
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# ================= 模型配置 =================
-MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "ollama")
-AVAILABLE_MODELS = os.getenv("AVAILABLE_MODELS", "qwen2.5-pe-sports").split(",")
-TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "20"))
-
 # ================= Ollama 配置 =================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-pe-sports")
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "512"))
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "peai")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.9"))
+AVAILABLE_MODELS = [
+    item.strip()
+    for item in os.getenv(
+        "AVAILABLE_MODELS",
+        OLLAMA_MODEL
+    ).split(",")
+    if item.strip()
+]
+
+
+def _clean_model_response(content: str) -> str:
+    text = (content or "").strip()
+    return re.sub(r"^(system|assistant|user)\s*[:：]\s*", "", text, flags=re.IGNORECASE).strip()
+
+
+def _make_session_title(user_input: str) -> str:
+    title = re.sub(r"\s+", " ", (user_input or "").strip())
+    title = re.sub(r"[#*_`>\[\]{}()]+", "", title).strip(" ，。！？,.!?;；:：\"'")
+    return title[:10] if title else "新对话"
 
 # ================= 系统提示词 =================
 SYSTEM_PROMPTS = {
@@ -119,8 +129,8 @@ class OllamaLLM:
                     "messages": messages,
                     "stream": False,
                     "options": {
-                        "num_predict": max_tokens,
-                        "temperature": temperature
+                        "temperature": temperature,
+                        **({"num_predict": max_tokens} if max_tokens is not None else {})
                     }
                 },
                 timeout=60
@@ -131,7 +141,7 @@ class OllamaLLM:
                 content = result.get("message", {}).get("content", "")
                 total_time = time.time() - start_time
                 logger.info(f"[性能] Ollama 推理耗时: {total_time:.2f}s")
-                return content.strip()
+                return _clean_model_response(content)
             else:
                 error_msg = f"Ollama API 错误: {response.status_code} - {response.text}"
                 logger.error(error_msg)
@@ -164,19 +174,7 @@ def get_model_provider() -> str:
 
 
 def get_available_models() -> List[str]:
-    models = []
-    for model in AVAILABLE_MODELS:
-        lower = model.lower()
-        if not lower.startswith("local:"):
-            models.append(model)
-            continue
-
-        model_name = model.split(":", 1)[1]
-        model_path = os.path.join(SCRIPT_DIR, "models", model_name)
-        if os.path.exists(model_path):
-            models.append(model)
-
-    return models
+    return AVAILABLE_MODELS
 
 def get_llm() -> OllamaLLM:
     """获取全局 LLM 实例（延迟加载）。"""
@@ -237,7 +235,7 @@ class ChatManager:
 
         cursor.execute(
             "SELECT role, content, model FROM messages WHERE session_id = ? "
-            "AND role IN ('user', 'assistant') ORDER BY timestamp",
+            "AND role IN ('user', 'assistant') ORDER BY timestamp, id",
             (session_row["id"],)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
@@ -267,7 +265,7 @@ class ChatManager:
 
         cursor.execute(
             "SELECT role, content, model FROM messages WHERE session_id = ? "
-            "AND role IN ('user', 'assistant') ORDER BY timestamp",
+            "AND role IN ('user', 'assistant') ORDER BY timestamp, id",
             (session_id,)
         )
         messages = [{"role": row[0], "content": row[1], "model": row[2]} for row in cursor.fetchall()]
@@ -289,7 +287,7 @@ class ChatManager:
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp",
+            "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp, id",
             (session_id,)
         )
         messages = [{"role": row[0], "content": row[1]} for row in cursor.fetchall()]
@@ -299,16 +297,7 @@ class ChatManager:
 
     def update_session_title(self, session_id: int, user_input: str, model_name: str = None) -> None:
         """生成会话标题。"""
-        try:
-            prompt = f"Please generate a very short title (no more than 6 characters, no punctuation) based on the user's message:\n\"{user_input}\""
-            messages = [{"role": "user", "content": prompt}]
-            title = model_predict(None, messages, max_tokens=TITLE_MAX_TOKENS)
-            title = title.strip(' " "\'\n').replace('Title:', '').replace('Title：', '')
-            if len(title) > 10:
-                title = title[:10]
-        except Exception as e:
-            print(f"Failed to generate title: {e}")
-            title = user_input[:10] + "..." if len(user_input) > 10 else user_input
+        title = _make_session_title(user_input)
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -355,6 +344,28 @@ class ChatManager:
             (session_id,)
         )
 
+        conn.commit()
+        conn.close()
+        return True
+
+    def update_first_system_message(self, session_id: int, content: str, model: str = None) -> bool:
+        """更新会话第一条 system 消息。"""
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id FROM messages WHERE session_id = ? AND role = 'system' ORDER BY timestamp, id LIMIT 1",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+
+        cursor.execute(
+            "UPDATE messages SET content = ?, model = ? WHERE id = ?",
+            (content, model or get_model_provider(), row[0])
+        )
         conn.commit()
         conn.close()
         return True

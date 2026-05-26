@@ -26,7 +26,7 @@ export const getLatestSession = async (userId) => {
 	}
 };
 
-export const createSession = async (userId, model = 'Qwen') => {
+export const createSession = async (userId, model = 'peai') => {
 	try {
 		const response = await request.post('/chat/api/sessions', {
 			user_id: userId,
@@ -55,7 +55,7 @@ export const getSession = async (sessionId) => {
 	}
 };
 
-export const sendMessage = async (sessionId, message, model = 'Qwen') => {
+export const sendMessage = async (sessionId, message, model = 'peai') => {
 	try {
 		const response = await request.post(`/chat/api/sessions/${sessionId}/messages`, {
 			message,
@@ -113,7 +113,7 @@ export const getModels = async () => {
 export const exportSession = async (sessionId) => {
 	return new Promise((resolve) => {
 		uni.downloadFile({
-			url: `/chat/api/sessions/${sessionId}/export`,
+			url: request.buildURL(`/chat/api/sessions/${sessionId}/export`),
 			success: (res) => {
 				if (res.statusCode >= 200 && res.statusCode < 300) {
 					resolve({ success: true, tempFilePath: res.tempFilePath });

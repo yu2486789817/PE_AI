@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/root/autodl-tmp/PE_AI}"
 LOG_DIR="${LOG_DIR:-$PROJECT_DIR/logs}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-pe-sports:q4_k_m}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-peai}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 YOLO_BASE_URL="${YOLO_BASE_URL:-http://127.0.0.1:8000}"
 
@@ -21,7 +21,7 @@ if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
   sleep 5
 fi
 
-if ! ollama list | grep -q "qwen2.5-pe-sports"; then
+if ! ollama list | awk '{print $1}' | grep -qx "$OLLAMA_MODEL"; then
   echo "Importing Ollama model..."
   (cd Code/AIChat/ollama && ollama create "$OLLAMA_MODEL" -f Modelfile)
 fi

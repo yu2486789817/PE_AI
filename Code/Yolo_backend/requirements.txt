@@ -5,6 +5,7 @@
 # Web Framework
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
+python-multipart>=0.0.9
 
 # ================= YOLO Model =================
 # Ultralytics YOLOv8 (includes torch dependency)

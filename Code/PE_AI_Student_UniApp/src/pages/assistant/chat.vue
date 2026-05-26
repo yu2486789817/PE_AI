@@ -3,37 +3,29 @@
 		<view class="chat-container">
 			<view class="chat-header glass-panel">
 				<view class="header-action" @click="toggleHistory">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon">
-						<polyline points="1 4 1 10 7 10"></polyline>
-						<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-					</svg>
+					<text class="header-icon-text">↺</text>
 				</view>
 
 				<view class="header-center">
 					<picker :range="modelNames" @change="handleModelChange">
 						<view class="model-selector">
 							<text class="model-name">{{ selectedModel }}</text>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="chevron-icon">
-								<polyline points="6 9 12 15 18 9"></polyline>
-							</svg>
+							<text class="chevron-icon">⌄</text>
 						</view>
 					</picker>
 				</view>
 
 				<view class="header-action" @click="startNewChat">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon">
-						<line x1="12" y1="5" x2="12" y2="19"></line>
-						<line x1="5" y1="12" x2="19" y2="12"></line>
-					</svg>
+					<text class="header-icon-text">＋</text>
 				</view>
 			</view>
 
 			<view class="action-strip">
 				<button class="strip-btn" :disabled="reportLoading" @click="handleGenerateWeeklyReport">
-					{{ reportLoading ? '生成中...' : '智能周报' }}
+					<text class="strip-btn-text">{{ reportLoading ? '生成中...' : '智能周报' }}</text>
 				</button>
 				<button class="strip-btn" :disabled="exporting || !currentSessionId" @click="handleExportSession">
-					{{ exporting ? '导出中...' : '导出MD' }}
+					<text class="strip-btn-text">{{ exporting ? '导出中...' : '导出MD' }}</text>
 				</button>
 			</view>
 
@@ -41,19 +33,10 @@
 				<view class="message-wrapper" v-for="(msg, index) in messages" :key="index" :class="msg.role">
 					<view class="avatar">
 						<view v-if="msg.role === 'user'" class="icon-inner">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--brand-500);">
-								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-								<circle cx="12" cy="7" r="4"></circle>
-							</svg>
+							<text class="avatar-symbol user-symbol">U</text>
 						</view>
 						<view v-else class="icon-inner">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: var(--warning-500);">
-								<rect x="3" y="11" width="18" height="10" rx="2"></rect>
-								<circle cx="12" cy="5" r="2"></circle>
-								<path d="M12 7v4"></path>
-								<line x1="8" y1="16" x2="8" y2="16"></line>
-								<line x1="16" y1="16" x2="16" y2="16"></line>
-							</svg>
+							<text class="avatar-symbol assistant-symbol">AI</text>
 						</view>
 					</view>
 					<view class="content-box"><text class="content">{{ msg.content }}</text></view>
@@ -64,8 +47,7 @@
 			<view class="input-area">
 				<textarea class="message-input" v-model="inputText" auto-height placeholder="向 AI 助手提问训练问题..." />
 				<button class="send-btn" :disabled="!inputText.trim() || sending" @click="handleSend">
-					<text v-if="!sending">发送</text>
-					<text v-else>...</text>
+					<text class="send-btn-text">{{ sending ? '...' : '发送' }}</text>
 				</button>
 			</view>
 
@@ -84,9 +66,7 @@
 							@click="switchSession(session)"
 						>
 							<view class="session-icon">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-									<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-								</svg>
+								<text class="session-icon-text">◇</text>
 							</view>
 							<view class="session-info">
 								<text class="session-name">{{ session.title || '新对话' }}</text>
@@ -122,8 +102,8 @@ const scrollTop = ref(0);
 const currentSessionId = ref(null);
 const showHistory = ref(false);
 const sessions = ref([]);
-const modelNames = ref(['Qwen']);
-const selectedModel = ref('Qwen');
+const modelNames = ref(['peai']);
+const selectedModel = ref('peai');
 
 const formatDateKey = (date) => {
 	const y = date.getFullYear();
@@ -379,13 +359,19 @@ onMounted(() => {
 <style scoped>
 .chat-container {
 	flex: 1;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	background: transparent;
 	position: relative;
+	overflow-x: hidden;
+	box-sizing: border-box;
 }
 
 .chat-header {
+	box-sizing: border-box;
 	height: 100rpx;
 	display: flex;
 	align-items: center;
@@ -402,21 +388,25 @@ onMounted(() => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--ink-700);
+	color: #22304a;
 }
 
-.header-icon {
-	width: 44rpx;
-	height: 44rpx;
+.header-icon-text {
+	font-size: 40rpx;
+	font-weight: 700;
+	line-height: 1;
+	color: #22304a;
 }
 
 .header-center {
 	flex: 1;
+	min-width: 0;
 	display: flex;
 	justify-content: center;
 }
 
 .model-selector {
+	max-width: 420rpx;
 	display: flex;
 	align-items: center;
 	padding: 10rpx 24rpx;
@@ -426,19 +416,25 @@ onMounted(() => {
 }
 
 .model-name {
+	max-width: 340rpx;
 	font-size: 26rpx;
 	font-weight: 700;
-	color: var(--brand-500);
+	color: #236df2;
 	margin-right: 8rpx;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .chevron-icon {
-	width: 24rpx;
-	height: 24rpx;
-	color: var(--brand-500);
+	font-size: 28rpx;
+	color: #236df2;
+	line-height: 1;
 }
 
 .action-strip {
+	box-sizing: border-box;
+	width: 100%;
 	display: flex;
 	gap: 14rpx;
 	padding: 0 24rpx 10rpx;
@@ -456,15 +452,29 @@ onMounted(() => {
 }
 
 .strip-btn[disabled] {
-	opacity: 0.55;
+	color: #6b7894;
+	background: #edf2fb;
+	opacity: 1;
+}
+
+.strip-btn-text {
+	color: inherit;
+	font-size: 24rpx;
+	font-weight: 600;
+	line-height: 62rpx;
 }
 
 .message-list {
+	box-sizing: border-box;
+	width: 100%;
 	flex: 1;
 	padding: 24rpx;
+	overflow-x: hidden;
 }
 
 .message-wrapper {
+	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	align-items: flex-start;
 	gap: 14rpx;
@@ -476,6 +486,7 @@ onMounted(() => {
 }
 
 .avatar {
+	flex: 0 0 68rpx;
 	width: 68rpx;
 	height: 68rpx;
 	border-radius: 34rpx;
@@ -495,7 +506,23 @@ onMounted(() => {
 	justify-content: center;
 }
 
+.avatar-symbol {
+	font-size: 22rpx;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.user-symbol {
+	color: #236df2;
+}
+
+.assistant-symbol {
+	color: #ea8814;
+}
+
 .content-box {
+	box-sizing: border-box;
+	min-width: 0;
 	max-width: 76%;
 	padding: 18rpx 20rpx;
 	border-radius: 20rpx;
@@ -514,6 +541,9 @@ onMounted(() => {
 	font-size: 25rpx;
 	line-height: 1.65;
 	color: #24365d;
+	word-break: break-all;
+	overflow-wrap: break-word;
+	white-space: pre-wrap;
 }
 
 .user .content {
@@ -525,6 +555,8 @@ onMounted(() => {
 }
 
 .input-area {
+	box-sizing: border-box;
+	width: 100%;
 	position: relative;
 	background: rgba(255, 255, 255, 0.94);
 	border-top: 1rpx solid #e6ecfb;
@@ -537,6 +569,8 @@ onMounted(() => {
 
 .message-input {
 	flex: 1;
+	min-width: 0;
+	box-sizing: border-box;
 	min-height: 44rpx;
 	max-height: 220rpx;
 	padding: 14rpx 18rpx;
@@ -549,6 +583,7 @@ onMounted(() => {
 }
 
 .send-btn {
+	flex: 0 0 122rpx;
 	width: 122rpx;
 	height: 78rpx;
 	line-height: 78rpx;
@@ -561,12 +596,22 @@ onMounted(() => {
 }
 
 .send-btn[disabled] {
-	opacity: 0.55;
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+	color: #fff;
+	opacity: 1;
+}
+
+.send-btn-text {
+	color: #fff;
+	font-size: 26rpx;
+	font-weight: 700;
+	line-height: 78rpx;
 }
 
 .history-drawer {
 	position: absolute;
 	inset: 0;
+	overflow: hidden;
 	background: rgba(0, 0, 0, 0.3);
 	z-index: 100;
 	opacity: 0;
@@ -580,6 +625,7 @@ onMounted(() => {
 }
 
 .drawer-content {
+	box-sizing: border-box;
 	position: absolute;
 	top: 0;
 	left: -500rpx;
@@ -607,12 +653,12 @@ onMounted(() => {
 .drawer-title {
 	font-size: 32rpx;
 	font-weight: 700;
-	color: var(--ink-900);
+	color: #172033;
 }
 
 .close-btn {
 	font-size: 48rpx;
-	color: var(--ink-500);
+	color: #67748f;
 	line-height: 1;
 }
 
@@ -638,15 +684,25 @@ onMounted(() => {
 	width: 40rpx;
 	height: 40rpx;
 	margin-right: 20rpx;
-	color: var(--ink-500);
+	color: #67748f;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .session-item.active .session-icon {
-	color: var(--brand-500);
+	color: #236df2;
+}
+
+.session-icon-text {
+	font-size: 28rpx;
+	line-height: 1;
+	color: inherit;
 }
 
 .session-info {
 	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 }
 
@@ -654,7 +710,7 @@ onMounted(() => {
 	display: block;
 	font-size: 28rpx;
 	font-weight: 600;
-	color: var(--ink-900);
+	color: #172033;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -662,13 +718,13 @@ onMounted(() => {
 
 .session-date {
 	font-size: 22rpx;
-	color: var(--ink-500);
+	color: #67748f;
 }
 
 .empty-sessions {
 	padding: 100rpx 0;
 	text-align: center;
 	font-size: 26rpx;
-	color: var(--ink-500);
+	color: #67748f;
 }
 </style>
