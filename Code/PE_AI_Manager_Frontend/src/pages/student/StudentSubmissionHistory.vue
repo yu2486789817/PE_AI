@@ -218,7 +218,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import SSEVideoPlayer from '../../components/SSEVideoPlayer.vue'
@@ -333,7 +333,7 @@ const loadSubmissions = async () => {
             })
 
             if (homeworkDetailResponse.data[0] >= 0) {
-              homeworkTitle = homeworkDetailResponse.data[0] || `作业 ${homeworkId}`
+              homeworkTitle = homeworkDetailResponse.data[0] || `作业 ${targetHomeworkId}`
             }
           } catch (err) {
             console.error(`获取作业 ${targetHomeworkId } 详情失败:`, err)
@@ -383,7 +383,7 @@ const deleteVideo = async (submission) => {
   }
 
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/video'
     const url = `${baseUrl}/delete_homework?homework_id=${encodeURIComponent(submission.id)}`
 
     const response = await fetch(url, {

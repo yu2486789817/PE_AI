@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    { "source": "/User/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/User/:path*" },
+    { "source": "/Class/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/Class/:path*" },
+    { "source": "/Course/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/Course/:path*" },
+    { "source": "/Course_student/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/Course_student/:path*" },
+    { "source": "/Homework/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/Homework/:path*" },
+    { "source": "/video/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/video/:path*" },
+    { "source": "/chat/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/chat/:path*" },
+    { "source": "/Teaching-video/:path*", "destination": "https://pe-ai-backend-9869.onrender.com/Teaching-video/:path*" },
+    { "source": "/((?!assets|favicon.ico).*)", "destination": "/index.html" }
+  ]
+}

@@ -21,44 +21,42 @@ export default defineConfig({
     port: 5300,
     proxy: {
       '/User': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       },
       '/Class': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       },
       '/Course': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       },
       '/Course_student': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       },
       '/Homework': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       },
       '/video': {
-        target: 'http://localhost:8000',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/video/, '')
+        secure: false
       },
       '/chat': {
-        target: 'http://localhost:5000',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/chat/, '')
+        secure: false
       },
       '/Teaching-video': {
-        target: 'http://localhost:5001',
+        target: 'https://pe-ai-backend-9869.onrender.com',
         changeOrigin: true,
         secure: false
       }
