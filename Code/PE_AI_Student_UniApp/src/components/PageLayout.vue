@@ -1,15 +1,15 @@
 <template>
-	<view class="layout-container">
+	<view class="layout-container" :class="{ 'lock-scroll': lockScroll }">
 		<!-- 顶部状态栏占位 -->
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<view v-if="showStatusBar" class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 		
 		<!-- 页面核心内容 -->
-		<view class="content-wrapper">
+		<view class="content-wrapper" :class="{ 'no-tabbar': !showTabBar, 'lock-scroll': lockScroll }">
 			<slot></slot>
 		</view>
 		
 		<!-- 全局自定义 TabBar -->
-		<TabBar :currentPath="currentPath" />
+		<TabBar v-if="showTabBar" :currentPath="currentPath" />
 	</view>
 </template>
 
@@ -17,13 +17,28 @@
 import { ref, onMounted } from 'vue';
 import TabBar from './TabBar.vue';
 
+defineProps({
+	showTabBar: {
+		type: Boolean,
+		default: true
+	},
+	lockScroll: {
+		type: Boolean,
+		default: false
+	},
+	showStatusBar: {
+		type: Boolean,
+		default: true
+	}
+});
+
 const statusBarHeight = ref(0);
 const currentPath = ref('');
 
 onMounted(() => {
 	// 获取系统状态栏高度
-	const systemInfo = uni.getSystemInfoSync();
-	statusBarHeight.value = systemInfo.statusBarHeight || 0;
+	const windowInfo = uni.getWindowInfo ? uni.getWindowInfo() : {};
+	statusBarHeight.value = windowInfo.statusBarHeight || 0;
 	
 	// 获取当前页面路径
 	const pages = getCurrentPages();
@@ -42,11 +57,25 @@ onMounted(() => {
 	background-attachment: fixed;
 }
 
+.layout-container.lock-scroll {
+	height: 100vh;
+	overflow: hidden;
+}
+
 .content-wrapper {
 	flex: 1;
-	padding-bottom: var(--page-bottom-padding);
+	padding-bottom: 240rpx;
 	display: flex;
 	flex-direction: column;
+}
+
+.content-wrapper.no-tabbar {
+	padding-bottom: 0;
+}
+
+.content-wrapper.lock-scroll {
+	min-height: 0;
+	overflow: hidden;
 }
 
 .status-bar {

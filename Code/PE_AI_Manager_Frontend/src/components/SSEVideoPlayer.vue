@@ -87,14 +87,15 @@ const startPlayback = () => {
       const data = JSON.parse(event.data)
 
       switch (data.event) {
-        case 'video_info':
+        case 'video_info': {
           const width = data.data.width !== undefined ? data.data.width : 'N/A'
           const height = data.data.height !== undefined ? data.data.height : 'N/A'
           const fps = data.data.fps !== undefined ? data.data.fps : 30
           infoDiv.innerHTML = `视频信息: ${width}x${height} @ ${fps}fps`
           break
+        }
 
-        case 'frame':
+        case 'frame': {
           const img = new Image()
           img.onload = function() {
             canvas.width = img.width
@@ -110,6 +111,7 @@ const startPlayback = () => {
             console.warn('接收到的帧数据缺少image字段:', data)
           }
           break
+        }
 
         case 'complete':
           infoDiv.innerHTML = '视频播放完成'
@@ -117,13 +119,14 @@ const startPlayback = () => {
           emit('playback-completed')
           break
 
-        case 'error':
+        case 'error': {
           const errorMessage = data.data && data.data.message ? data.data.message : '未知错误'
           infoDiv.innerHTML = `错误: ${errorMessage}`
           stopPlayback()
           alert(`视频流错误: ${errorMessage}`)
           emit('playback-error', errorMessage)
           break
+        }
       }
     } catch (e) {
       console.error('解析SSE数据出错:', e)

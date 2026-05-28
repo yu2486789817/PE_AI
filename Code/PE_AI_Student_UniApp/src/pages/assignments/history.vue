@@ -4,12 +4,7 @@
 			<view class="loading" v-if="loading"><text class="loading-text">正在加载提交记录...</text></view>
 
 			<view class="empty" v-else-if="submissions.length === 0">
-				<view class="empty-icon text-blue">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-						<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-						<polyline points="22,6 12,13 2,6"></polyline>
-					</svg>
-				</view>
+				<view class="empty-icon"><text class="empty-icon-text">□</text></view>
 				<text class="empty-text">还没有提交记录</text>
 			</view>
 
@@ -68,7 +63,7 @@
 					/>
 
 					<button class="dialog-generate" :disabled="reportLoading || !reportQuery.trim()" @click="generateAnalysisReport">
-						{{ reportLoading ? '生成中...' : '生成AI分析报告' }}
+						<text class="dialog-generate-text">{{ reportLoading ? '生成中...' : '生成AI分析报告' }}</text>
 					</button>
 
 					<view v-if="reportError" class="dialog-error">
@@ -344,7 +339,17 @@ const formatDate = (s) => {
 	width: 80rpx;
 	height: 80rpx;
 	margin: 0 auto 14rpx;
-	color: var(--ink-500);
+	border-radius: 24rpx;
+	background: #edf4ff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #4d78d8;
+}
+
+.empty-icon-text {
+	font-size: 44rpx;
+	line-height: 1;
 }
 
 .submission-card {
@@ -549,6 +554,15 @@ const formatDate = (s) => {
 
 .dialog-generate[disabled] {
 	opacity: 0.55;
+	color: #fff;
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+}
+
+.dialog-generate-text {
+	color: #fff;
+	font-size: 24rpx;
+	font-weight: 600;
+	line-height: 74rpx;
 }
 
 .dialog-error {

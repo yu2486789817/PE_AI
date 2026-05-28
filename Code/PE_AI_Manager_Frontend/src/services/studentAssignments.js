@@ -1,4 +1,4 @@
-import { apiClient, aiClient } from './axios';
+import { apiClient } from './axios';
 
 /**
  * 学生作业相关服务
@@ -203,7 +203,7 @@ export class StudentAssignmentService {
         }
         break;
 
-      case 'final_stats':
+      case 'final_stats': {
         console.log('收到 final_stats 事件:', JSON.stringify(data.data, null, 2));
 
         const sseStreamUrl = `/video/get_processed_video?homework_id=${encodeURIComponent(assignmentId)}&student_id=${encodeURIComponent(studentId)}&download=false`;
@@ -224,6 +224,7 @@ export class StudentAssignmentService {
         console.log('设置 aiResult.value:', JSON.stringify(aiResult.value, null, 2));
         console.log('设置 processedVideoUrlValue.value:', processedVideoUrlValue.value);
         break;
+      }
 
       case 'error':
         throw new Error(data.data.message);
@@ -337,10 +338,11 @@ export class StudentAssignmentService {
    * 提交作业
    */
   async submitAssignment(courseId, assignmentId, selectedFile, processedVideoBlob, processedVideoUrl, onFrameUpdate) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const formData = this.createVideoFormData(selectedFile);
-        const poseTypeInfo = await this.getPoseType(assignmentId);
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        try {
+          const formData = this.createVideoFormData(selectedFile);
+          const poseTypeInfo = await this.getPoseType(assignmentId);
         const poseType = poseTypeInfo.poseType;
         const studentId = this.getStudentId();
         const url = this.buildVideoProcessingUrl(assignmentId, studentId, poseType);
@@ -361,10 +363,13 @@ export class StudentAssignmentService {
         const decoder = new TextDecoder();
 
         await this.processSSEStream(reader, decoder, assignmentId, studentId, poseTypeInfo, resolve, reject, onFrameUpdate);
-      } catch (error) {
-        console.error('作业提交失败:', error);
-        reject(error);
-      }
+        } catch (error) {
+          console.error('作业提交失败:', error);
+          reject(error);
+        }
+      };
+
+      run();
     });
   }
 

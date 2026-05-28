@@ -308,7 +308,7 @@ const onVideoUploaded = (result) => {
     ElMessage.success('视频上传成功！封面和时长加载中...')
 
     // 立即生成封面和时长（仅用于当前表单预览）
-    generateVideoMeta(result.url, (newCover, newDuration) => {
+    generateVideoMeta(result.url, () => {
       ElMessage.success('封面和时长已生成')
     })
   }

@@ -36,7 +36,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps({
   visible: Boolean,

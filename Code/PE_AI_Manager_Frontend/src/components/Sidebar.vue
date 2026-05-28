@@ -95,6 +95,8 @@ import {
   ClipboardList as ClipboardListIcon
 } from 'lucide-vue-next'
 
+defineOptions({ name: 'AppSidebar' })
+
 const route = useRoute()
 const router = useRouter()
 const isCollapsed = ref(false)

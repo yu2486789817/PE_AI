@@ -7,6 +7,18 @@ const getToken = () => {
 	return user.token || '';
 };
 
+const isSubmitted = async (homeworkId, studentId, token) => {
+	const resp = await request.post('/Homework/get_submit_id_by_student', {
+		first: '0',
+		second: studentId,
+		third: token,
+		fourth: String(homeworkId),
+		fifth: studentId
+	});
+	const value = String(resp.data?.data || '').trim();
+	return !!(resp.data?.success && value && !['NULL', '-1', '-2'].includes(value));
+};
+
 export const getStudentAssignments = async (studentId) => {
 	try {
 		const token = getToken();
@@ -58,14 +70,28 @@ export const getStudentAssignments = async (studentId) => {
 
 					if (detailResp.data && detailResp.data.data) {
 						const parts = detailResp.data.data.split('\t\r');
+						const deadline = parts[2] || '';
+						let statusText = '进行中';
+						try {
+							if (await isSubmitted(hwId.trim(), studentId, token)) {
+								statusText = '已完成';
+							} else if (deadline && new Date(deadline) < new Date()) {
+								statusText = '已截止';
+							}
+						} catch (e) {
+							if (deadline && new Date(deadline) < new Date()) {
+								statusText = '已截止';
+							}
+						}
 						allAssignments.push({
 							id: parseInt(hwId.trim(), 10),
 							courseId,
 							courseName: courseNameMap[courseId] || '',
 							title: parts[0] || '',
 							description: parts[1] || '',
-							deadline: parts[2] || '',
-							createTime: parts[3] || ''
+							deadline,
+							createTime: parts[3] || '',
+							statusText
 						});
 					}
 				}

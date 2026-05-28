@@ -19,7 +19,7 @@
 			<InfoCard title="个性化健康报告" class="mt-3">
 				<view class="report-entry" @click="openHealthReportDialog">
 					<text class="report-entry-title">基于当前情况生成长期训练建议</text>
-					<text class="report-entry-arrow">></text>
+					<text class="report-entry-arrow">›</text>
 				</view>
 			</InfoCard>
 
@@ -62,11 +62,11 @@
 						<text class="health-title">个性化健康报告</text>
 						<text class="health-close" @click="closeHealthReportDialog">×</text>
 					</view>
-					<input class="input-base" v-model="healthHeight" type="number" placeholder="身高(cm，可选)" />
-					<input class="input-base mt-2" v-model="healthWeight" type="number" placeholder="体重(kg，可选)" />
-					<textarea class="textarea-base mt-2" v-model="healthQuery" auto-height maxlength="500" placeholder="请输入你希望咨询的问题，例如：给我一个 4 周体能提升训练计划。" />
-					<button class="btn-primary mt-3" :disabled="healthLoading || !healthQuery.trim()" @click="generateHealthReport">
-						{{ healthLoading ? '生成中...' : '生成健康报告' }}
+					<input class="input-base health-field" v-model="healthHeight" type="number" placeholder="身高(cm，可选)" />
+					<input class="input-base health-field" v-model="healthWeight" type="number" placeholder="体重(kg，可选)" />
+					<textarea class="textarea-base health-query" v-model="healthQuery" maxlength="500" placeholder="请输入你希望咨询的问题，例如：给我一个 4 周体能提升训练计划。" />
+					<button class="btn-primary health-generate" :disabled="healthLoading || !healthQuery.trim()" @click="generateHealthReport">
+						<text class="btn-text">{{ healthLoading ? '生成中...' : '生成健康报告' }}</text>
 					</button>
 					<view class="health-error" v-if="healthError"><text>{{ healthError }}</text></view>
 					<scroll-view scroll-y class="health-report" v-if="healthContent">
@@ -266,6 +266,14 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 .container {
 	padding: 28rpx;
 	min-height: 100vh;
+	padding-bottom: 260rpx;
+}
+
+.btn-text {
+	color: inherit;
+	font-size: inherit;
+	font-weight: inherit;
+	line-height: inherit;
 }
 
 .action-grid {
@@ -275,10 +283,15 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 }
 
 .action-item {
-	border: 2rpx solid var(--color-line-200);
-	border-radius: var(--radius-lg);
+	border: 2rpx solid #d8e0ee;
+	border-radius: 22rpx;
 	padding: 24rpx;
-	background: var(--color-surface-100);
+	background: linear-gradient(135deg, #f2f7ff 0%, #ffffff 100%);
+	box-shadow: 0 8rpx 18rpx rgba(35, 109, 242, 0.08);
+}
+
+.action-item:nth-child(2) {
+	background: linear-gradient(135deg, #f0fbf7 0%, #ffffff 100%);
 }
 
 .action-title {
@@ -388,7 +401,20 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 	width: 100%;
 	background: #fff;
 	border-radius: var(--radius-xl);
-	padding: 24rpx;
+	padding: 28rpx;
+}
+
+.health-generate {
+	width: 100%;
+	color: #ffffff;
+	margin-top: 22rpx;
+}
+
+.health-generate[disabled] {
+	color: #ffffff;
+	background: linear-gradient(120deg, #b9cdf2 0%, #c5e0f5 100%);
+	box-shadow: 0 10rpx 22rpx rgba(35, 109, 242, 0.14);
+	opacity: 1;
 }
 
 .dialog-title {
@@ -414,7 +440,7 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 10rpx;
+	margin-bottom: 22rpx;
 }
 
 .health-title {
@@ -427,6 +453,29 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 	font-size: 44rpx;
 	line-height: 1;
 	color: var(--color-ink-500);
+}
+
+.health-field,
+.health-query {
+	width: 100%;
+	margin-top: 18rpx;
+	background: #f8fbff;
+	border: 2rpx solid #d5dfef;
+	border-radius: 18rpx;
+	color: #172033;
+	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.9);
+}
+
+.health-field {
+	height: 86rpx;
+	line-height: 86rpx;
+	padding: 0 22rpx;
+}
+
+.health-query {
+	min-height: 152rpx;
+	padding: 18rpx 22rpx;
+	line-height: 1.55;
 }
 
 .health-error {
@@ -457,7 +506,7 @@ const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}
 .health-actions {
 	display: flex;
 	gap: 12rpx;
-	margin-top: 14rpx;
+	margin-top: 22rpx;
 }
 
 .health-actions button {

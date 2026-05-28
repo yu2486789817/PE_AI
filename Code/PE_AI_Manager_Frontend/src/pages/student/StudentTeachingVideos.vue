@@ -92,11 +92,10 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import InlineVideoPlayer from '../../components/InlineVideoPlayer.vue'
 
-const router = useRouter()
 const route = useRoute()
 
 const courseIdFromRoute = route.params.courseId || ''
@@ -300,15 +299,4 @@ const closeVideoPlayer = () => {
   playingVideoTitle.value = ''
 }
 
-const goBack = () => {
-  if (courseIdFromRoute) {
-    router.push(`/student/course/${courseIdFromRoute}`)
-  } else {
-    router.push('/student')
-  }
-}
-const logout = () => {
-  localStorage.removeItem('user')
-  router.push('/login')
-}
 </script>

@@ -25,11 +25,11 @@
 			<InfoCard class="mt-3">
 				<view class="menu-item" @click="goTo('/pages/profile/edit')">
 					<text class="menu-text">编辑个人信息</text>
-					<text class="arrow">></text>
+					<text class="arrow">›</text>
 				</view>
 				<view class="menu-item" @click="goTo('/pages/profile/password')">
 					<text class="menu-text">修改密码</text>
-					<text class="arrow">></text>
+					<text class="arrow">›</text>
 				</view>
 			</InfoCard>
 
@@ -41,7 +41,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { logout, getStudentInfo } from '@/services/auth'
+import { logout, getStudentInfo, buildStudentUser } from '@/services/auth'
 import PageLayout from '@/components/PageLayout.vue'
 import MobilePageHeader from '@/components/ui/MobilePageHeader.vue'
 import InfoCard from '@/components/ui/InfoCard.vue'
@@ -77,6 +77,23 @@ const loadUser = async () => {
 			} catch (e) {
 				// keep local data
 			}
+		}
+		return
+	}
+
+	const token = uni.getStorageSync('token')
+	const studentId = uni.getStorageSync('lastStudentId')
+	if (token && studentId) {
+		user.value = { id: studentId, role: 'student' }
+		try {
+			const infoResp = await getStudentInfo(studentId, token, studentId)
+			if (infoResp?.data?.success && infoResp.data.data) {
+				const merged = buildStudentUser(studentId, infoResp.data.data)
+				user.value = merged
+				uni.setStorageSync('user', merged)
+			}
+		} catch (e) {
+			// keep local fallback
 		}
 	}
 }

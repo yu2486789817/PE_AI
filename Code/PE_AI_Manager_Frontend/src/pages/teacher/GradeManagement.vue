@@ -174,7 +174,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {apiClient, aiClient} from '../../services/axios.js'
 import SSEVideoPlayer from '@/components/SSEVideoPlayer.vue'
 import { cacheService } from '../../services/DataCacheService.js'
-import { Pencil as PencilIcon, Check as CheckIcon, Video as VideoIcon, Edit3 as Edit3Icon, FileQuestion as FileQuestionIcon, ChevronLeft as ChevronLeftIcon } from 'lucide-vue-next'
+import { Pencil as PencilIcon, Check as CheckIcon, Video as VideoIcon, Edit3 as Edit3Icon, FileQuestion as FileQuestionIcon } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()

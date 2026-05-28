@@ -147,13 +147,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as aiChat from '../services/aiChat'
 import { marked } from 'marked'
 import { Bot as BotIcon, Plus as PlusIcon, MessageSquare as MessageSquareIcon, Trash2 as Trash2Icon, ChevronLeft as ChevronLeftIcon, Share as ShareIcon, Send as SendIcon, FileText as FileTextIcon } from 'lucide-vue-next'
 
 const router = useRouter()
+
+defineOptions({ name: 'AssistantPage' })
 
 // 响应式数据
 const chatContainer = ref(null)

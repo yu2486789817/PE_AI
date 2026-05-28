@@ -4,12 +4,7 @@
 		<view class="loading" v-if="loading"><text class="loading-text">正在加载教学视频...</text></view>
 
 		<view class="empty" v-else-if="videos.length === 0">
-			<view class="empty-icon text-blue">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;">
-					<polygon points="23 7 16 12 23 17 23 7"></polygon>
-					<rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-				</svg>
-			</view>
+			<view class="empty-icon"><text class="empty-icon-text">▶</text></view>
 			<text class="empty-text">暂无教学视频</text>
 		</view>
 
@@ -74,7 +69,7 @@ const loadVideos = async () => {
 					const d = infoResp.data.data.split('\t\r');
 					const rawUrl = d[2] || '';
 					const filename = rawUrl ? rawUrl.substring(rawUrl.lastIndexOf('/') + 1) : '';
-					const normalizedUrl = filename ? `/Teaching-video/files/${filename}` : '';
+					const normalizedUrl = filename ? request.buildURL(`/Teaching-video/files/${filename}`) : '';
 					items.push({
 						id: cid,
 						title: d[0] || '未命名视频',
@@ -99,7 +94,7 @@ const playVideo = (video) => {
 	let url = video.url;
 	if (url && url.includes('localhost:5002')) {
 		const filename = url.substring(url.lastIndexOf('/') + 1);
-		url = `/Teaching-video/files/${filename}`;
+		url = request.buildURL(`/Teaching-video/files/${filename}`);
 	}
 
 	uni.navigateTo({ url: `/pages/course/videoPlayer?url=${encodeURIComponent(url)}&title=${encodeURIComponent(video.title)}` });
@@ -135,7 +130,17 @@ const formatDate = (s) => {
 	width: 80rpx;
 	height: 80rpx;
 	margin: 0 auto 14rpx;
-	color: var(--ink-500);
+	border-radius: 24rpx;
+	background: #edf4ff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #4d78d8;
+}
+
+.empty-icon-text {
+	font-size: 42rpx;
+	line-height: 1;
 }
 
 .video-card {

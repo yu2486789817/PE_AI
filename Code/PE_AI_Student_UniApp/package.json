@@ -6,7 +6,9 @@
     "dev:h5": "uni --platform h5",
     "build:h5": "uni build --platform h5",
     "dev:app": "uni --platform app",
-    "build:app": "uni build --platform app"
+    "build:app": "uni build --platform app",
+    "dev:mp-weixin": "uni --platform mp-weixin",
+    "build:mp-weixin": "uni build --platform mp-weixin"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5000720260410001",
@@ -27,8 +29,8 @@
     "@dcloudio/uni-quickapp-webview": "3.0.0-5000720260410001",
     "axios": "^1.7.2",
     "crypto-js": "^4.2.0",
-    "pinia": "^2.1.7",
-    "vue": "3.5.32",
+    "pinia": "2.1.7",
+    "vue": "3.4.21",
     "vue-i18n": "9.14.5"
   },
   "devDependencies": {
@@ -37,7 +39,6 @@
     "@dcloudio/uni-cli-shared": "3.0.0-5000720260410001",
     "@dcloudio/uni-stacktracey": "3.0.0-5000720260410001",
     "@dcloudio/vite-plugin-uni": "3.0.0-5000720260410001",
-    "@vue/runtime-core": "3.5.32",
     "vite": "5.2.8"
   }
 }

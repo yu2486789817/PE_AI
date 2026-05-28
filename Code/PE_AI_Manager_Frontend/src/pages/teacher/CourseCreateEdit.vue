@@ -333,11 +333,6 @@ const copyCode = async () => {
 }
 
 const goBack = () => router.push('/teacher')
-const goToAssistant = () => router.push('/teacher/assistant')
-const logout = () => {
-  localStorage.removeItem('user')
-  router.push('/login')
-}
 
 onMounted(loadCourseData)
 </script>

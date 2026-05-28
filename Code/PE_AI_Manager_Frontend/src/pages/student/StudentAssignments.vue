@@ -509,30 +509,6 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 获取处理后的视频 - 备用方法
-const getProcessedVideo = async (homeworkId, studentId) => {
-  try {
-    console.log('开始获取处理后的视频...')
-
-    const result = await assignmentService.getProcessedVideo(homeworkId, studentId);
-    if (result) {
-      // 更新处理后的视频URL和预览
-      processedVideoUrl.value = result.videoUrl
-      showProcessedVideo.value = true
-      processedVideoBlob.value = result.videoBlob
-
-      console.log('处理后的视频预览URL已更新')
-
-      return result.videoUrl
-    } else {
-      throw new Error('未找到处理后的视频文件')
-    }
-  } catch (error) {
-    console.error('获取处理后的视频失败:', error);
-    throw error;
-  }
-}
-
 // 提交作业
 const uploadHomeworkVideo = (formData, token) => {
   return new Promise((resolve, reject) => {
@@ -552,7 +528,7 @@ const uploadHomeworkVideo = (formData, token) => {
         } else {
           reject(new Error(data.message || `上传失败(${xhr.status})`))
         }
-      } catch (error) {
+      } catch {
         reject(new Error('提交响应解析失败'))
       }
     }
@@ -607,116 +583,6 @@ const submitAssignment = async () => {
     isUploading.value = false
     isProcessing.value = false
   }
-  return
-  if (!selectedFile.value || assignment.value.status === '已完成') return
-
-  try {
-    // 重置AI评价保存状态
-    aiEvaluationSaved.value = false
-
-    // 设置上传状态
-    isUploading.value = true
-    uploadProgress.value = 0
-    isProcessing.value = true
-    processingStats.value = '正在准备上传文件...'
-    processingVideoFrame.value = ''
-
-    // 获取当前用户信息
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
-    const studentId = user.id || 'student1'
-
-    try {
-      const result = await assignmentService.submitAssignment(
-        courseId,
-        assignmentId,
-        selectedFile.value,
-        processedVideoBlob.value,
-        processedVideoUrl.value,
-        (frameUrl) => {
-          processingVideoFrame.value = frameUrl;
-        }
-      );
-
-      const { processedVideoUrlValue, aiResult, poseTypeInfo } = result;
-
-      // 保存作业提交信息
-      await assignmentService.saveAssignmentSubmission(
-        courseId,
-        assignmentId,
-        aiResult,
-        studentId,
-        processedVideoUrlValue,
-        poseTypeInfo
-      );
-
-      // 更新本地状态
-      processedVideoUrl.value = processedVideoUrlValue;
-
-      console.log('提交作业后设置 processedVideoUrl:', processedVideoUrl.value);
-
-      // 如果有处理后的视频URL，显示视频预览区域
-      if (processedVideoUrlValue) {
-        showProcessedVideo.value = true;
-        console.log('设置 showProcessedVideo = true');
-      } else {
-        console.log('processedVideoUrlValue 为空，不显示视频预览');
-      }
-
-      // 更新作业状态为已完成
-      if (assignment.value) {
-        assignment.value.status = '已完成';
-      }
-
-      // 重新获取最终得分
-      await fetchFinalScore();
-
-      // 显示提交成功弹窗
-      ElMessageBox.alert('作业提交成功！', '提示', {
-        confirmButtonText: '确定',
-        type: 'success'
-      });
-    } catch (error) {
-      // AI服务调用失败，获取poseTypeInfo并创建空的AI评价结果
-      console.error('AI服务调用失败:', error);
-      processingStats.value = `AI服务暂时不可用，将直接提交作业。<br>错误: ${error.message}`;
-
-      // 获取poseTypeInfo
-      const poseTypeInfo = await assignmentService.getPoseType(assignmentId);
-
-      // 创建空的AI评价结果
-      const aiResult = {
-        final_count: 0,
-        processed_frame_count: 0,
-        total_time: 0,
-        video_url: null
-      };
-
-      // 直接保存作业提交信息
-      await assignmentService.saveAssignmentSubmission(
-        courseId,
-        assignmentId,
-        aiResult,
-        studentId,
-        null,
-        poseTypeInfo
-      );
-
-      // 更新作业状态为已完成
-      if (assignment.value) {
-        assignment.value.status = '已完成';
-      }
-
-      // 重新获取最终得分
-      await fetchFinalScore();
-    }
-  } catch (error) {
-    console.error('作业提交失败:', error);
-    alert(`作业提交失败: ${error.message}`);
-  } finally {
-    // 重置上传状态
-    isUploading.value = false;
-    isProcessing.value = false;
-  }
 }
 
 // SSE流播放处理后的视频
@@ -757,14 +623,15 @@ const startProcessedVideoPlayback = () => {
       const data = JSON.parse(event.data)
 
       switch (data.event) {
-        case 'video_info':
+        case 'video_info': {
           const width = data.data.width !== undefined ? data.data.width : 'N/A'
           const height = data.data.height !== undefined ? data.data.height : 'N/A'
           const fps = data.data.fps !== undefined ? data.data.fps : 30
           infoDiv.innerHTML = `视频信息: ${width}x${height} @ ${fps}fps`
           break
+        }
 
-        case 'frame':
+        case 'frame': {
           const img = new Image()
           img.onload = function() {
             canvas.width = img.width
@@ -780,18 +647,20 @@ const startProcessedVideoPlayback = () => {
             console.warn('接收到的帧数据缺少image字段:', data)
           }
           break
+        }
 
         case 'complete':
           infoDiv.innerHTML = '视频播放完成'
           stopProcessedVideoPlayback()
           break
 
-        case 'error':
+        case 'error': {
           const errorMessage = data.data && data.data.message ? data.data.message : '未知错误'
           infoDiv.innerHTML = `错误: ${errorMessage}`
           stopProcessedVideoPlayback()
           alert(`视频流错误: ${errorMessage}`)
           break
+        }
       }
     } catch (e) {
       console.error('解析SSE数据出错:', e)

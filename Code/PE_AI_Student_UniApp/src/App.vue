@@ -67,6 +67,10 @@ button {
 	padding: 0;
 	margin: 0;
 	line-height: inherit;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
 }
 
 button::after {
@@ -85,6 +89,13 @@ button::after {
 	box-shadow: 0 12rpx 24rpx rgba(35, 109, 242, 0.3);
 }
 
+.btn-primary[disabled] {
+	color: #ffffff;
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+	box-shadow: 0 10rpx 22rpx rgba(35, 109, 242, 0.16);
+	opacity: 1;
+}
+
 .btn-outline {
 	height: 76rpx;
 	line-height: 76rpx;
@@ -95,6 +106,13 @@ button::after {
 	color: var(--color-ink-700);
 	background: var(--color-surface-card);
 	border: 2rpx solid var(--color-line-200);
+}
+
+.btn-outline[disabled] {
+	color: #8a96ad;
+	background: #eef3fb;
+	border-color: #d8e0ee;
+	opacity: 1;
 }
 
 .input-base {

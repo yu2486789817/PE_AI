@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<PageLayout>
 		<view class="container">
 		<view class="loading" v-if="loading"><text class="loading-text">正在加载作业详情...</text></view>
@@ -37,8 +37,14 @@
 
 			<view class="upload-box">
 				<text class="upload-title">上传作业视频</text>
-				<text class="upload-hint">支持 MP4 格式，建议 300 秒以内</text>
-				<button class="choose-btn" @click="chooseVideo" :disabled="assignment.statusClass === 'ended'">选择视频文件</button>
+				<text class="upload-hint">相册/拍摄支持 60 秒以内；长视频请先发到文件传输助手再选择</text>
+				<button class="choose-btn" @click="chooseVideo" :disabled="assignment.statusClass === 'ended'">
+					<text class="choose-btn-text">选择短视频</text>
+				</button>
+				<button class="file-btn" @click="chooseMessageVideo" :disabled="assignment.statusClass === 'ended'">
+					<text class="choose-btn-text">选择长视频文件</text>
+				</button>
+				<text class="video-error" v-if="videoError">{{ videoError }}</text>
 
 				<view class="file-info" v-if="selectedFile">
 					<text class="file-name">{{ selectedFile.name }}</text>
@@ -53,7 +59,7 @@
 				</view>
 
 				<button class="submit-btn" :disabled="!selectedFile || isUploading" @click="submitAssignment">
-					{{ isUploading ? '上传中...' : '提交作业' }}
+					<text class="submit-btn-text">{{ isUploading ? '上传中...' : '提交作业' }}</text>
 				</button>
 			</view>
 
@@ -78,6 +84,7 @@ const uploadProgress = ref(0);
 const assignmentId = ref('');
 const courseId = ref('');
 const processingText = ref('');
+const videoError = ref('');
 
 onMounted(() => {
 	const pages = getCurrentPages();
@@ -161,15 +168,72 @@ const loadAssignment = async () => {
 };
 
 const chooseVideo = () => {
+	videoError.value = '';
+
+	const setSelectedVideo = (path, size = 0, name = '') => {
+		if (!path) {
+			videoError.value = '未获取到视频路径，请换一个视频再试。';
+			uni.showToast({ title: videoError.value, icon: 'none' });
+			return;
+		}
+		selectedFile.value = {
+			path,
+			name: name || path.split('/').pop() || '作业视频.mp4',
+			size: size || 0
+		};
+	};
+
 	uni.chooseVideo({
 		sourceType: ['album', 'camera'],
-		maxDuration: 300,
+		maxDuration: 60,
+		success: (res) => setSelectedVideo(res.tempFilePath, res.size),
+		fail: (err) => {
+			if (err?.errMsg && err.errMsg.includes('cancel')) return;
+			console.error('选择视频失败:', err);
+			videoError.value = err?.errMsg || '无法打开视频选择器，请确认微信已授予相册/相机权限。';
+			uni.showModal({
+				title: '选择视频失败',
+				content: videoError.value,
+				showCancel: false
+			});
+		}
+	});
+};
+
+const chooseMessageVideo = () => {
+	videoError.value = '';
+
+	if (!wx?.chooseMessageFile) {
+		videoError.value = '当前微信版本不支持从聊天文件选择视频。';
+		uni.showToast({ title: videoError.value, icon: 'none' });
+		return;
+	}
+
+	wx.chooseMessageFile({
+		count: 1,
+		type: 'video',
 		success: (res) => {
+			const file = res.tempFiles?.[0] || {};
+			if (!file.path) {
+				videoError.value = '未获取到视频文件路径，请换一个文件再试。';
+				uni.showToast({ title: videoError.value, icon: 'none' });
+				return;
+			}
 			selectedFile.value = {
-				path: res.tempFilePath,
-				name: res.tempFilePath.split('/').pop(),
-				size: res.size || 0
+				path: file.path,
+				name: file.name || file.path.split('/').pop() || '作业视频.mp4',
+				size: file.size || 0
 			};
+		},
+		fail: (err) => {
+			if (err?.errMsg && err.errMsg.includes('cancel')) return;
+			console.error('选择长视频文件失败:', err);
+			videoError.value = err?.errMsg || '选择长视频文件失败，请先把视频发到文件传输助手。';
+			uni.showModal({
+				title: '选择长视频失败',
+				content: videoError.value,
+				showCancel: false
+			});
 		}
 	});
 };
@@ -212,7 +276,12 @@ const submitAssignment = async () => {
 			assignment.value.statusClass = 'active';
 		}
 	} catch (e) {
-		uni.showToast({ title: e?.message || '提交失败', icon: 'none' });
+		const message = e?.message || '提交失败';
+		uni.showModal({
+			title: '提交失败',
+			content: message,
+			showCancel: false
+		});
 	} finally {
 		clearInterval(uploadProgressTimer);
 		isUploading.value = false;
@@ -222,6 +291,10 @@ const submitAssignment = async () => {
 
 const compressVideo = (src) => {
 	return new Promise((resolve, reject) => {
+		if (!uni.compressVideo) {
+			resolve({ path: src, size: selectedFile.value?.size || 0 });
+			return;
+		}
 		uni.compressVideo({
 			src,
 			quality: 'medium',
@@ -242,10 +315,11 @@ const compressVideo = (src) => {
 const uploadHomeworkVideo = (filePath, formData) => {
 	return new Promise((resolve, reject) => {
 		uni.uploadFile({
-			url: '/Homework/upload_submit',
+			url: request.buildURL('/Homework/upload_submit'),
 			filePath,
 			name: 'file',
 			formData,
+			timeout: 120000,
 			header: {
 				Authorization: `Bearer ${uni.getStorageSync('token') || ''}`
 			},
@@ -262,10 +336,11 @@ const uploadHomeworkVideo = (filePath, formData) => {
 					resolve(res);
 					return;
 				}
-				reject(new Error(`上传失败(${res.statusCode})`));
+				reject(new Error(`上传失败(${res.statusCode})：${res.data || '服务器未返回详细信息'}`));
 			},
-			fail: () => {
-				reject(new Error('上传失败'));
+			fail: (err) => {
+				console.error('上传作业视频失败:', err);
+				reject(new Error(err?.errMsg || '上传失败，请检查 uploadFile 合法域名或网络'));
 			}
 		});
 	});
@@ -297,6 +372,7 @@ const buildAiFeedback = (stats) => {
 
 const removeFile = () => {
 	selectedFile.value = null;
+	videoError.value = '';
 	uploadProgress.value = 0;
 };
 
@@ -461,9 +537,29 @@ const goToHistory = () => {
 	border-radius: 999rpx;
 }
 
-.choose-btn {
+.choose-btn,
+.file-btn {
 	background: #f0f4ff;
 	color: #255ad8;
+}
+
+.file-btn {
+	margin-top: 12rpx;
+}
+
+.choose-btn[disabled],
+.file-btn[disabled] {
+	background: #edf2fb;
+	color: #8a96ad;
+	opacity: 1;
+}
+
+.video-error {
+	display: block;
+	margin-top: 12rpx;
+	font-size: 22rpx;
+	line-height: 1.5;
+	color: #d93025;
 }
 
 .submit-btn {
@@ -471,6 +567,20 @@ const goToHistory = () => {
 	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
 	color: #fff;
 	box-shadow: 0 10rpx 22rpx rgba(29, 99, 255, 0.3);
+}
+
+.submit-btn[disabled] {
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+	color: #fff;
+	opacity: 1;
+}
+
+.choose-btn-text,
+.submit-btn-text {
+	font-size: 27rpx;
+	font-weight: 600;
+	line-height: 82rpx;
+	color: inherit;
 }
 
 .history-btn {

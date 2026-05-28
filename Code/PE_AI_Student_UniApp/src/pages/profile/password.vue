@@ -14,7 +14,9 @@
 				<text class="label">确认新密码</text>
 				<input class="input" v-model="confirmPwd" password placeholder="请再次输入新密码" />
 			</view>
-			<button class="save-btn" :loading="saving" @click="handleChange">确认修改</button>
+			<button class="save-btn" :disabled="saving" @click="handleChange">
+				<text class="save-btn-text">{{ saving ? '修改中...' : '确认修改' }}</text>
+			</button>
 		</view>
 		</view>
 	</PageLayout>
@@ -104,5 +106,17 @@ const handleChange = async () => {
 	border-radius: 999rpx;
 	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
 	box-shadow: 0 12rpx 24rpx rgba(29, 99, 255, 0.32);
+}
+
+.save-btn[disabled] {
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+	opacity: 1;
+}
+
+.save-btn-text {
+	color: #fff;
+	font-size: 29rpx;
+	font-weight: 700;
+	line-height: 88rpx;
 }
 </style>

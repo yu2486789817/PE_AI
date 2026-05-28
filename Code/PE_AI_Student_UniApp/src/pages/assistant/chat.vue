@@ -1,9 +1,14 @@
 <template>
-	<PageLayout>
+	<PageLayout :show-tab-bar="false" :lock-scroll="true" :show-status-bar="false">
 		<view class="chat-container">
 			<view class="chat-header glass-panel">
-				<view class="header-action" @click="toggleHistory">
-					<text class="header-icon-text">↺</text>
+				<view class="header-actions">
+					<view class="header-action" @click="handleBack">
+						<text class="header-icon-text back-icon">‹</text>
+					</view>
+					<view class="header-action" @click="toggleHistory">
+						<text class="header-icon-text menu-icon">☰</text>
+					</view>
 				</view>
 
 				<view class="header-center">
@@ -175,6 +180,15 @@ const fetchSessions = async () => {
 const toggleHistory = () => {
 	showHistory.value = !showHistory.value;
 	if (showHistory.value) fetchSessions();
+};
+
+const handleBack = () => {
+	const pages = getCurrentPages();
+	if (pages.length > 1) {
+		uni.navigateBack();
+		return;
+	}
+	uni.switchTab({ url: '/pages/index/index' });
 };
 
 const handleModelChange = (e) => {
@@ -359,6 +373,7 @@ onMounted(() => {
 <style scoped>
 .chat-container {
 	flex: 1;
+	height: 100%;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
@@ -366,7 +381,7 @@ onMounted(() => {
 	flex-direction: column;
 	background: transparent;
 	position: relative;
-	overflow-x: hidden;
+	overflow: hidden;
 	box-sizing: border-box;
 }
 
@@ -377,9 +392,15 @@ onMounted(() => {
 	align-items: center;
 	justify-content: space-between;
 	padding: 0 30rpx;
-	margin: 20rpx 24rpx 10rpx;
+	margin: 12rpx 24rpx 10rpx;
 	border-radius: 20rpx;
 	z-index: 10;
+}
+
+.header-actions {
+	display: flex;
+	align-items: center;
+	gap: 10rpx;
 }
 
 .header-action {
@@ -396,6 +417,16 @@ onMounted(() => {
 	font-weight: 700;
 	line-height: 1;
 	color: #22304a;
+}
+
+.menu-icon {
+	font-size: 36rpx;
+}
+
+.back-icon {
+	font-size: 56rpx;
+	font-weight: 500;
+	transform: translateY(-2rpx);
 }
 
 .header-center {
@@ -468,6 +499,7 @@ onMounted(() => {
 	box-sizing: border-box;
 	width: 100%;
 	flex: 1;
+	min-height: 0;
 	padding: 24rpx;
 	overflow-x: hidden;
 }
@@ -551,13 +583,13 @@ onMounted(() => {
 }
 
 .padding-bottom {
-	height: 130rpx;
+	height: 160rpx;
 }
 
 .input-area {
 	box-sizing: border-box;
 	width: 100%;
-	position: relative;
+	flex-shrink: 0;
 	background: rgba(255, 255, 255, 0.94);
 	border-top: 1rpx solid #e6ecfb;
 	padding: 18rpx 20rpx;

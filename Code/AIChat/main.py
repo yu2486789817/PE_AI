@@ -26,6 +26,7 @@ import os
 import json
 import logging
 import requests
+from fastapi import BackgroundTasks
 from typing import Dict, List
 
 import uvicorn
@@ -50,7 +51,8 @@ from report_module import (
     query_analysis_report,
     get_recent_analyses,
     get_yolo_student_all_records,
-    _parse_feedback_json
+    _parse_feedback_json,
+    _summarize_exercise_data
 )
 
 # ================= 日志配置 =================
@@ -59,6 +61,42 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+LOAD_HISTORY_ON_CREATE = os.getenv("LOAD_HISTORY_ON_CREATE", "background").lower()
+STUDENT_NO_HISTORY_CONTEXT = "暂无近期运动数据记录。"
+
+
+def _build_student_system_prompt(role: str, context_str: str) -> str:
+    history_instruction = (
+        "如果学生询问你是否能看到运动历史，当前学生数据为空时必须明确说明暂时没有近期运动数据；"
+        "有学生数据摘要时才回答可以看到，并基于数据摘要说明。\n"
+    )
+    return (
+        f"当前用户角色：{role}\n"
+        + history_instruction
+        + SYSTEM_PROMPTS["student_coach"].format(context=context_str)
+    )
+
+
+def _build_student_history_context(records: list) -> str:
+    records = _parse_feedback_json(records)
+    recent_records = records[-5:]
+    summary = _summarize_exercise_data(recent_records)
+    return json.dumps(summary, ensure_ascii=False)
+
+
+def _load_student_history_prompt(session_id: int, user_id: str, role: str, model_name: str = None) -> None:
+    try:
+        records = get_yolo_student_all_records(user_id)
+        if not records or not isinstance(records, list):
+            logger.info(f"create_session: no student history for {user_id}")
+            return
+
+        context_str = _build_student_history_context(records)
+        system_prompt = _build_student_system_prompt(role, context_str)
+        chat_mgr.update_first_system_message(session_id, system_prompt, model_name)
+        logger.info(f"create_session: background loaded student {user_id} history {len(records)} records")
+    except Exception as e:
+        logger.warning(f"create_session: background student history load failed: {e}")
 
 # ================= FastAPI 应用初始化 =================
 app = FastAPI(
@@ -132,7 +170,7 @@ async def list_sessions(user_id: str):
 
 
 @app.post('/api/sessions')
-async def create_session(request: Request):
+async def create_session(request: Request, background_tasks: BackgroundTasks):
     """
     为指定用户创建新会话。
 
@@ -186,23 +224,20 @@ async def create_session(request: Request):
             welcome_msg_content = "老师您好，我是您的专属AI教学助理。我可以帮您分析全班同学的运动表现数据，或提供教案优化建议。今天需要我帮您做些什么？"
         else:
             # 学生角色：使用私人教练 Prompt，并注入历史运动数据
-            context_str = "暂无近期运动数据记录。"
-            try:
-                # 从 Yolo_backend 获取学生历史运动数据
-                records = get_yolo_student_all_records(user_id)
-                if records and isinstance(records, list) and len(records) > 0:
-                    # 解析 feedback_json 字段，避免双重编码
-                    records = _parse_feedback_json(records)
-                    # 取最近的5条记录以避免 Prompt 过长
-                    recent_records = records[-5:]
-                    context_str = json.dumps(recent_records, ensure_ascii=False)
-                    logger.info(f"create_session: 获取学生 {user_id} 历史记录 {len(records)} 条")
-            except Exception as e:
-                # 获取失败不影响会话创建，使用默认提示
-                logger.warning(f"create_session: 获取学生历史运动记录失败（Yolo_backend 可能未启动）: {e}")
+            context_str = STUDENT_NO_HISTORY_CONTEXT
+            if LOAD_HISTORY_ON_CREATE == "true":
+                try:
+                    records = get_yolo_student_all_records(user_id)
+                    if records and isinstance(records, list) and len(records) > 0:
+                        context_str = _build_student_history_context(records)
+                        logger.info(f"create_session: 获取学生 {user_id} 历史记录 {len(records)} 条")
+                except Exception as e:
+                    logger.warning(f"create_session: 获取学生历史运动记录失败（Yolo_backend 可能未启动）: {e}")
+            else:
+                logger.info("create_session: defer student history preload")
 
-            system_prompt = f"当前用户角色：{role}\n" + SYSTEM_PROMPTS["student_coach"].format(context=context_str)
-            welcome_msg_content = "你好！我是你的专属AI运动私教。我已经同步了你近期的运动考核数据，随时可以为你提供定制化的训练指导和动作纠正建议。今天想练点什么？"
+            system_prompt = _build_student_system_prompt(role, context_str)
+            welcome_msg_content = "你好！我是你的专属AI运动私教。我会在后台同步你的近期运动考核数据，同步后可以为你提供定制化的训练指导和动作纠正建议。今天想练点什么？"
 
         # 添加 System Prompt 和欢迎消息
         chat_mgr.add_message(session_id, "system", system_prompt, model_name)
@@ -212,6 +247,9 @@ async def create_session(request: Request):
             "content": welcome_msg_content
         }
         chat_mgr.add_message(session_id, "assistant", welcome_msg["content"], model_name)
+        session = chat_mgr.get_session_by_id(session_id)
+        if role != 'teacher' and LOAD_HISTORY_ON_CREATE == "background":
+            background_tasks.add_task(_load_student_history_prompt, session_id, user_id, role, model_name)
 
         return JSONResponse({
             "success": True,
@@ -381,10 +419,11 @@ async def send_message(session_id: int, request: Request):
 
         # 获取更新后的会话（包含新消息）
         updated_session = chat_mgr.get_session_by_id(session_id)
+        model_messages = chat_mgr.get_session_messages_with_system(session_id)
 
         # 调用 AI 模型生成回复
         logger.info(f"send_message: 调用模型生成回复...")
-        response = model_predict(model_name, updated_session["messages"])
+        response = model_predict(model_name, model_messages)
         logger.info(f"send_message: 生成回复完成，长度={len(response)}")
 
         # 添加 AI 回复到历史
@@ -482,12 +521,12 @@ async def list_models():
             "data": {
                 "backend": "ollama",
                 "ollama_url": "http://localhost:11434",
-                "model": "qwen2.5-pe-sports"
+                "model": "qwen2.5-3b-pe-sports:q4_k_m"
             }
         }
     """
     try:
-        from chat_module import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_TOKENS, TEMPERATURE, get_available_models
+        from chat_module import OLLAMA_BASE_URL, OLLAMA_MODEL, TEMPERATURE, get_available_models
 
         # 尝试获取 Ollama 服务中的模型列表
         try:
@@ -506,10 +545,10 @@ async def list_models():
                 "backend": "ollama",
                 "ollama_url": OLLAMA_BASE_URL,
                 "model": OLLAMA_MODEL,
-                "max_tokens": MAX_TOKENS,
                 "temperature": TEMPERATURE,
                 "model_info": model_info,
-                "available_models": get_available_models()
+                "available_models": get_available_models(),
+                "ollama_model": OLLAMA_MODEL
             }
         })
     except Exception as e:

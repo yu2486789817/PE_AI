@@ -8,33 +8,7 @@
 			@click="switchTab(item.pagePath)"
 		>
 			<view class="icon-wrapper">
-				<view v-if="item.id === 'home'" class="svg-icon">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-						<polyline points="9 22 9 12 15 12 15 22"></polyline>
-					</svg>
-				</view>
-				<view v-else-if="item.id === 'assignment'" class="svg-icon">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-						<polyline points="14 2 14 8 20 8"></polyline>
-						<line x1="16" y1="13" x2="8" y2="13"></line>
-						<line x1="16" y1="17" x2="8" y2="17"></line>
-					</svg>
-				</view>
-				<view v-else-if="item.id === 'chat'" class="svg-icon">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-						<circle cx="9" cy="9" r="0.5" fill="currentColor"></circle>
-						<circle cx="15" cy="9" r="0.5" fill="currentColor"></circle>
-					</svg>
-				</view>
-				<view v-else-if="item.id === 'profile'" class="svg-icon">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-						<circle cx="12" cy="7" r="4"></circle>
-					</svg>
-				</view>
+				<image class="tab-icon" :src="currentPath === item.pagePath ? item.activeIcon : item.icon" mode="aspectFit" />
 			</view>
 			<text class="tab-text">{{ item.text }}</text>
 			<view class="active-indicator" v-if="currentPath === item.pagePath"></view>
@@ -53,10 +27,10 @@ const props = defineProps({
 })
 
 const tabList = [
-	{ id: 'home', text: '首页', pagePath: '/pages/index/index' },
-	{ id: 'assignment', text: '作业', pagePath: '/pages/assignments/list' },
-	{ id: 'chat', text: 'AI 助手', pagePath: '/pages/assistant/chat' },
-	{ id: 'profile', text: '我的', pagePath: '/pages/profile/index' }
+	{ id: 'home', text: '首页', pagePath: '/pages/index/index', icon: '/static/tabbar/home.png', activeIcon: '/static/tabbar/home-active.png' },
+	{ id: 'assignment', text: '作业', pagePath: '/pages/assignments/list', icon: '/static/tabbar/assignment.png', activeIcon: '/static/tabbar/assignment-active.png' },
+	{ id: 'chat', text: 'AI 助手', pagePath: '/pages/assistant/chat', icon: '/static/tabbar/chat.png', activeIcon: '/static/tabbar/chat-active.png' },
+	{ id: 'profile', text: '我的', pagePath: '/pages/profile/index', icon: '/static/tabbar/profile.png', activeIcon: '/static/tabbar/profile-active.png' }
 ]
 
 onMounted(() => {
@@ -80,7 +54,7 @@ const switchTab = (path) => {
 <style scoped>
 .tabbar-container {
 	position: fixed;
-	bottom: 30rpx;
+	bottom: calc(22rpx + env(safe-area-inset-bottom));
 	left: 30rpx;
 	right: 30rpx;
 	height: var(--tabbar-height);
@@ -91,7 +65,6 @@ const switchTab = (path) => {
 	padding: 0 20rpx;
 	z-index: 1000;
 	box-shadow: var(--shadow-card);
-	margin-bottom: var(--safe-area-bottom);
 	background: rgba(255, 255, 255, 0.92);
 	border: 2rpx solid var(--color-line-200);
 }
@@ -108,16 +81,17 @@ const switchTab = (path) => {
 }
 
 .icon-wrapper {
-	width: 48rpx;
-	height: 48rpx;
+	width: 44rpx;
+	height: 44rpx;
 	margin-bottom: 6rpx;
 	color: var(--color-ink-500);
 	transition: all 0.3s ease;
 }
 
-.svg-icon {
+.tab-icon {
 	width: 100%;
 	height: 100%;
+	display: block;
 }
 
 .tab-text {

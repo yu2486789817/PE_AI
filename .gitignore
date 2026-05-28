@@ -109,4 +109,13 @@ data/
 /Experiment_2_Report.md
 /Experiment_2_Report_ZH.md
 /Code/2026_Slides Lesson09-10_Software Cost Estimation V2.pdf
+/ex2
+/ex3
 /Code/实验二_软件规模度量_功能点分析.pdf
+/其他人的报告/
+
+# Local Assistant cache & Word temp files
+.claude/
+**/ .claude/
+~$*
+**/~$*

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page-shell">
     <div class="page-container">
       <section class="rounded-2xl border border-web-line-200 bg-white/85 p-6 shadow-card">

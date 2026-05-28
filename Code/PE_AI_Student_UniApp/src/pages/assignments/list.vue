@@ -53,7 +53,7 @@ const loadAssignments = async () => {
 			return {
 				...hw,
 				courseName: hw.courseName || hw.courseId || '',
-				statusText: isActive ? '进行中' : '已截止'
+				statusText: hw.statusText || (isActive ? '进行中' : '已截止')
 			}
 		})
 	}

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<PageLayout>
 		<view class="container">
 			<MobilePageHeader title="课程详情" subtitle="查看课程信息、作业和教学视频。" />
@@ -15,7 +15,7 @@
 			<InfoCard v-if="course" class="mt-3">
 				<view class="video-entry" @click="goToVideos">
 					<text class="video-title">教学视频</text>
-					<text class="video-arrow">></text>
+					<text class="video-arrow">›</text>
 				</view>
 			</InfoCard>
 

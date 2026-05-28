@@ -182,7 +182,6 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { apiClient } from '../services/axios'
-import StudentAssignments from './student/StudentAssignments.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -207,7 +206,6 @@ const fetchCourseDetails = async () => {
   loading.value = true
   error.value = false
   errorMessage.value = ''
-  const Student_id = localStorage.getItem('user')
   try {
     // 获取JWT token
     const token = localStorage.getItem('token')
@@ -545,10 +543,6 @@ const fetchTeachingVideos = async () => {
 // 导航函数
 const goBack = () => {
   router.push('/student')
-}
-
-const goToTeachingVideos = () => {
-  router.push(`/student/course/${courseId}/teaching-videos`)
 }
 
 const playVideo = (video) => {

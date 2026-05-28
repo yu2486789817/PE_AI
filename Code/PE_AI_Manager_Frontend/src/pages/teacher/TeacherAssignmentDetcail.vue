@@ -287,7 +287,7 @@ const fetchDetail = async () => {
 
       // 使用 Promise.all 并行获取提交详情，并利用缓存
       const detailPromises = pairs.map(async (pair) => {
-        const [studentId, submitId] = pair.split('\n')
+        const [, submitId] = pair.split('\n')
         if (submitId === '-1' || submitId === '-2') return null
 
         const detail = await cacheService.fetchWithCache(`submit_detail:${submitId}`, () =>
@@ -425,7 +425,7 @@ const handleDelete = async () => {
     } else {
       alert('删除失败')
     }
-  } catch (err) {
+  } catch {
     alert('删除请求失败')
   }
 }

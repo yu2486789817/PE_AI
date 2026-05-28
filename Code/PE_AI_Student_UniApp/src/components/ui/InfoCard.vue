@@ -16,14 +16,16 @@ defineProps({ title: { type: String, default: '' } })
 
 <style scoped>
 .info-card {
-  background: var(--color-surface-card);
-  border: 2rpx solid var(--color-line-200);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
+  background: #ffffff;
+  border: 2rpx solid #d8e0ee;
+  border-radius: 28rpx;
+  box-shadow: 0 10rpx 24rpx rgba(23, 56, 122, 0.1);
+  overflow: hidden;
 }
 .info-card__header {
   padding: 20rpx 24rpx;
-  border-bottom: 2rpx solid var(--color-line-100);
+  border-bottom: 2rpx solid #e8edf7;
+  background: linear-gradient(90deg, #f6f9ff 0%, #ffffff 100%);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -31,7 +33,7 @@ defineProps({ title: { type: String, default: '' } })
 .info-card__title {
   font-size: 30rpx;
   font-weight: 700;
-  color: var(--color-ink-900);
+  color: #172033;
 }
 .info-card__body {
   padding: 24rpx;

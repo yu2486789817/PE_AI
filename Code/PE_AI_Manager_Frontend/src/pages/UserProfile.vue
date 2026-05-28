@@ -282,7 +282,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { changeTeacherPassword, changeStudentPassword, changeTeacherInfo, changeStudentInfo, getTeacherInfo, getStudentInfo } from '../services/auth'
-import { User as UserIcon, ShieldCheck as ShieldCheckIcon, Camera as CameraIcon, X as XIcon } from 'lucide-vue-next'
+import { User as UserIcon, ShieldCheck as ShieldCheckIcon } from 'lucide-vue-next'
 
 const router = useRouter()
 

@@ -1,7 +1,7 @@
-﻿<template>
+<template>
 	<view class="login-container">
 		<view class="logo-box">
-			<image class="logo" src="/static/images/logo.png" mode="aspectFit"></image>
+			<text class="app-icon">&#127947;</text>
 			<text class="app-name">智慧体育学生端</text>
 			<text class="app-sub">智能训练 · 过程可视 · 数据反馈</text>
 		</view>
@@ -14,7 +14,9 @@
 				<input class="input-base" v-model="password" password placeholder="请输入登录密码" />
 			</FormBlock>
 
-			<button class="btn-primary login-btn" :loading="loading" @click="handleLogin">学生登录</button>
+			<button class="btn-primary login-btn" :disabled="loading" @click="handleLogin">
+				<text class="login-btn-text">{{ loading ? '登录中...' : '学生登录' }}</text>
+			</button>
 
 			<view class="footer-links">
 				<text class="link" @click="goToRegister">还没有账号？去注册</text>
@@ -73,10 +75,10 @@ const goToRegister = () => {
 	margin-bottom: 48rpx;
 }
 
-.logo {
-	width: 170rpx;
-	height: 170rpx;
-	filter: drop-shadow(0 12rpx 22rpx rgba(35, 79, 168, 0.22));
+.app-icon {
+	font-size: 120rpx;
+	line-height: 1;
+	text-align: center;
 }
 
 .app-name {
@@ -103,6 +105,24 @@ const goToRegister = () => {
 .login-btn {
 	width: 100%;
 	margin-top: 16rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #ffffff;
+	background: linear-gradient(120deg, #236df2 0%, #2f94f5 100%);
+}
+
+.login-btn[disabled] {
+	opacity: 0.72;
+	color: #ffffff;
+	background: linear-gradient(120deg, #236df2 0%, #2f94f5 100%);
+}
+
+.login-btn-text {
+	color: #ffffff;
+	font-size: 26rpx;
+	font-weight: 700;
+	line-height: 80rpx;
 }
 
 .footer-links {

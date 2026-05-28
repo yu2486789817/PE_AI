@@ -43,7 +43,9 @@
 
 			<text class="error-msg" v-if="errorMsg">{{ errorMsg }}</text>
 
-			<button class="register-btn" :loading="loading" @click="handleRegister">注册</button>
+			<button class="register-btn" :disabled="loading" @click="handleRegister">
+				<text class="register-btn-text">{{ loading ? '注册中...' : '注册' }}</text>
+			</button>
 
 			<view class="footer-links">
 				<text class="link" @click="goToLogin">已有账号？去登录</text>
@@ -199,6 +201,18 @@ const goToLogin = () => uni.navigateBack();
 	border-radius: 999rpx;
 	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
 	box-shadow: 0 12rpx 24rpx rgba(29, 99, 255, 0.33);
+}
+
+.register-btn[disabled] {
+	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
+	opacity: 1;
+}
+
+.register-btn-text {
+	color: #fff;
+	font-size: 30rpx;
+	font-weight: 700;
+	line-height: 90rpx;
 }
 
 .footer-links {

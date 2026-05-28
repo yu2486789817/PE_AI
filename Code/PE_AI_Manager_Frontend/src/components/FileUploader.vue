@@ -86,7 +86,6 @@ const props = defineProps({
 const maxSize = computed(() => props.maxFileSize * 1024 * 1024);
 
 let cancelTokenSource = null;
-let startTime = null;
 
 // 用于平滑速度计算
 let lastLoaded = 0;
@@ -183,7 +182,6 @@ const uploadFile = async (file) => {
   uploading.value = true;
 
   cancelTokenSource = axios.CancelToken.source();
-  startTime = Date.now();
   lastLoaded = 0;
   lastTime = null;
   smoothedSpeed = 0;
