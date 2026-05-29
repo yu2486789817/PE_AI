@@ -45,7 +45,26 @@ public final class RequestValueResolver {
     }
 
     public static String resolveJwt(Map<String, String> body, HttpServletRequest request) {
-        String jwt = getIgnoreCase(body, "jwt", "token", "second", "authorization");
+        // 1. Try explicit JWT/token keys first
+        String jwt = getIgnoreCase(body, "jwt", "token", "authorization");
+        if (jwt != null && !jwt.isBlank()) {
+            return normalizeBearerToken(jwt);
+        }
+
+        // 2. Prioritize positional parameter that actually looks like a token (length >= 14)
+        String third = getIgnoreCase(body, "third");
+        String second = getIgnoreCase(body, "second");
+
+        if (third != null && third.trim().length() >= 14) {
+            jwt = third;
+        } else if (second != null && second.trim().length() >= 14) {
+            jwt = second;
+        } else if (third != null && !third.isBlank()) {
+            jwt = third;
+        } else {
+            jwt = second;
+        }
+
         if ((jwt == null || jwt.isBlank()) && request != null) {
             jwt = request.getHeader("Authorization");
         }
