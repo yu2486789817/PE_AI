@@ -28,6 +28,8 @@ Before implementing:
 - No abstractions for single-use code.
 - No "flexibility" or "configurability" that wasn't requested.
 - No error handling for impossible scenarios.
+- No backward-compatibility code for callers that don't exist. Only keep compatibility branches when a real, in-repo caller depends on them. Don't invent "legacy" fallbacks, dual parameter layouts, or version shims on speculation. If unsure whether a caller exists, search the codebase first; if none, implement to the single current contract.
+- Handle sentinel values and positional contracts explicitly. When data uses sentinels (e.g. a literal "NULL" string, -1) or fixed-position encodings (tab-separated fields), parse them in one place with the sentinel and empty-field cases handled deliberately - never let a generic filter silently drop or shift fields.
 - If you write 200 lines and it could be 50, rewrite it.
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
@@ -45,6 +47,7 @@ When editing existing code:
 When your changes create orphans:
 - Remove imports/variables/functions that YOUR changes made unused.
 - Don't remove pre-existing dead code unless asked.
+- When your change removes the last caller of some code, that code is now dead by your hand - remove it (and its now-unused service methods, endpoints, routes) as part of the same change.
 
 The test: Every changed line should trace directly to the user's request.
 
