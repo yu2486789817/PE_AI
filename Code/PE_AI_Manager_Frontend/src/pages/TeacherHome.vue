@@ -166,9 +166,9 @@ const loadCourses = async () => {
 
       const assignmentCount = homeworkResp.data.success
         ? String(homeworkResp.data.data || '')
-            .trim()
             .split(/[\t\r\n]+/)
-            .filter(Boolean).length
+            .map(s => s.trim())
+            .filter(s => s && s !== 'NULL').length
         : 0
 
       return {

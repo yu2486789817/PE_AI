@@ -244,7 +244,7 @@ const fetchCourseDetails = async () => {
       return
     }
 
-    const homeworkIds = String(homeworkResp.data.data).split('\t\r').filter(Boolean)
+    const homeworkIds = String(homeworkResp.data.data).split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
     const assignmentPromises = homeworkIds.map(async (id) => {
       const [infoResp, aiResp] = await Promise.all([
         cacheService.fetchWithCache(`homework_info:${id}`, () =>

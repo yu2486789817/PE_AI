@@ -122,7 +122,7 @@ const fetchCourseStats = async (courseId, studentId, token) => {
 			return { totalAssignments: 0, completedAssignments: 0 }
 		}
 
-		const homeworkIds = hwResp.data.data.split('\t\r').filter(Boolean)
+		const homeworkIds = hwResp.data.data.split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
 		let completedAssignments = 0
 		for (const hwId of homeworkIds) {
 			const submitResp = await request.post('/Homework/get_submit_id_by_student', {

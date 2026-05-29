@@ -61,7 +61,7 @@ export const getStudentAssignments = async (studentId) => {
 			});
 
 			if (hwResp.data && hwResp.data.data && hwResp.data.data !== 'NULL') {
-				const hwIds = hwResp.data.data.split('\t\r').filter(Boolean);
+				const hwIds = hwResp.data.data.split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL');
 				for (const hwId of hwIds) {
 					const detailResp = await request.post('/Homework/get_info_by_homework_id', {
 						first: courseId,

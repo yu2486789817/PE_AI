@@ -171,7 +171,7 @@ const loadData = async () => {
         })
       )
       if (!hwResp.data.success || !hwResp.data.data) continue
-      const hwIds = String(hwResp.data.data).split('\t\r').filter(Boolean)
+      const hwIds = String(hwResp.data.data).split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
 
       const studentResp = await cacheService.fetchWithCache(`course_student_ids:${courseId}`, () =>
         apiClient.post('/Course_student/get_student_id_by_course', {

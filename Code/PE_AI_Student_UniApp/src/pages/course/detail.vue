@@ -102,7 +102,7 @@ const loadCourseDetails = async () => {
 		})
 
 		if (hwResp.data?.success && hwResp.data.data && hwResp.data.data !== 'NULL') {
-			const ids = String(hwResp.data.data).split('\t\r').filter((i) => i.trim())
+			const ids = String(hwResp.data.data).split('\t\r').map((i) => i.trim()).filter((i) => i && i !== 'NULL')
 			const items = []
 			for (const hwId of ids) {
 				try {

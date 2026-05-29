@@ -255,9 +255,9 @@ const fetchCourseDetails = async () => {
         })
 
         let assignments = []
-        if (homeworkResponse.data.success && homeworkResponse.data.data) {
-          // 解析作业ID列表（用\t\r分隔）
-          const homeworkIdList = homeworkResponse.data.data.split('\t\r').filter(id => id.trim())
+        if (homeworkResponse.data.success && homeworkResponse.data.data && homeworkResponse.data.data.trim() !== 'NULL') {
+          // 解析作业ID列表（用\t\r分隔），排除空值与 NULL 哨兵
+          const homeworkIdList = homeworkResponse.data.data.split('\t\r').map(id => id.trim()).filter(id => id && id !== 'NULL')
 
           // 为每个作业ID获取作业详情
           const assignmentDetailsPromises = homeworkIdList.map(async (homeworkId) => {
