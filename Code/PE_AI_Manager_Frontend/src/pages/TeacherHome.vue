@@ -176,7 +176,7 @@ const loadCourses = async () => {
         name: parts[1] || '未命名课程',
         info: parts[2] || '',
         code: parts[3] || '',
-        subject: parts[3] || '',
+        subject: id,
         semester: parts[4] || '',
         is_active: String(parts[5] || '0'),
         created_time: parts[6] || '',

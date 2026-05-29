@@ -225,7 +225,7 @@ const fetchCourseDetails = async () => {
       name: courseParts[1] || '',
       info: courseParts[2] || '',
       code: courseParts[3] || '',
-      subject: courseParts[3] || '',
+      subject: courseId,
       is_active: String(courseParts[5] || '1'),
       assignments: []
     }

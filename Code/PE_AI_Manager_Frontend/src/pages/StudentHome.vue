@@ -211,7 +211,7 @@ const fetchCourseList = async () => {
             id: courseId,
             name: arr[1] || '未命名课程',
             description: arr[2] || '',
-            subject: arr[3] || '',
+            subject: courseId,
             status: isActive === '1' ? '进行中' : '已结束',
             totalAssignments,
             completedAssignments,

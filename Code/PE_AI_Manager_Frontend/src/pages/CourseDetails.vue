@@ -307,7 +307,7 @@ const fetchCourseDetails = async () => {
                   deadline: deadline,
                   create_time: assignmentData[3] || '',
                   course_id: courseId,
-                  subject: courseCode || '未知课号',
+                  subject: courseId || '未知课号',
                   status: submitStatus,
                   points: 100
                 }
@@ -321,7 +321,7 @@ const fetchCourseDetails = async () => {
                 deadline: '待定',
                 create_time: '',
                 course_id: courseId,
-                subject: courseCode || '未知课号',
+                subject: courseId || '未知课号',
                 status: '进行中',
                 points: 100
               }
@@ -360,7 +360,7 @@ const fetchCourseDetails = async () => {
           id: courseId,
           name: courseName || '未命名课程',
           description: courseDescription || '暂无描述',
-          subject: courseCode || '未知课号',
+          subject: courseId || '未知课号',
           status: isActive === '1' ? '进行中' : '未发布',
           assignments: assignments,
           teacherId: teacherId,
