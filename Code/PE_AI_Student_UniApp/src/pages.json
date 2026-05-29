@@ -45,10 +45,6 @@
             "style": { "navigationBarTitleText": "视频播放" }
         },
         {
-            "path": "pages/profile/edit",
-            "style": { "navigationBarTitleText": "编辑信息" }
-        },
-        {
             "path": "pages/profile/password",
             "style": { "navigationBarTitleText": "修改密码" }
         }

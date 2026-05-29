@@ -160,38 +160,6 @@ public class UserService {
         return Result.success();
     }
 
-    // ==================== UPDATE INFO ====================
-
-    public Result<Void> updateTeacherInfo(String id, String jwt, String name,
-                                           String gender, String title, String college, String department) {
-        Result<Void> authResult = checkJwt(1, id, jwt);
-        if (authResult.getCode() < 0) return authResult;
-
-        Teacher teacher = teacherMapper.selectById(id);
-        teacher.setName(name);
-        teacher.setGender(gender);
-        teacher.setTitle(title);
-        teacher.setCollege(college);
-        teacher.setDepartment(department);
-        teacherMapper.updateById(teacher);
-        return Result.success();
-    }
-
-    public Result<Void> updateStudentInfo(String id, String jwt, String name,
-                                           String gender, String major, String college, String department) {
-        Result<Void> authResult = checkJwt(0, id, jwt);
-        if (authResult.getCode() < 0) return authResult;
-
-        Student student = studentMapper.selectById(id);
-        student.setName(name);
-        student.setGender(gender);
-        student.setMajor(major);
-        student.setCollege(college);
-        student.setDepartment(department);
-        studentMapper.updateById(student);
-        return Result.success();
-    }
-
     // ==================== CHANGE PASSWORD ====================
 
     public Result<Void> changeTeacherPassword(String id, String jwt, String oldPassword, String newPassword) {

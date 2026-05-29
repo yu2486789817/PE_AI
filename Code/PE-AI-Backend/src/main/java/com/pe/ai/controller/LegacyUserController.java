@@ -142,36 +142,6 @@ public class LegacyUserController {
         );
     }
 
-    // ==================== UPDATE INFO ====================
-
-    @PostMapping("/change_teacher_info")
-    public Result<Void> changeTeacherInfo(@RequestBody Map<String, String> body,
-                                          HttpServletRequest request) {
-        return userService.updateTeacherInfo(
-                getParam(body, "first"),   // id
-                RequestValueResolver.resolveJwt(body, request), // jwt
-                getParam(body, "third"),   // name
-                getParam(body, "fourth"),  // gender
-                getParam(body, "fifth"),   // title
-                getParam(body, "sixth"),   // college
-                getParam(body, "seventh")  // department
-        );
-    }
-
-    @PostMapping("/change_student_info")
-    public Result<Void> changeStudentInfo(@RequestBody Map<String, String> body,
-                                          HttpServletRequest request) {
-        return userService.updateStudentInfo(
-                getParam(body, "first"),   // id
-                RequestValueResolver.resolveJwt(body, request), // jwt
-                getParam(body, "third"),   // name
-                getParam(body, "fourth"),  // gender
-                getParam(body, "fifth"),   // major
-                getParam(body, "sixth"),   // college
-                getParam(body, "seventh")  // department
-        );
-    }
-
     // ==================== GET INFO ====================
     // The old frontend expects data returned as tab-separated string: "name\t\rgender\t\rtitle..."
 

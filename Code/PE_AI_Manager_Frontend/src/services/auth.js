@@ -170,44 +170,6 @@ export const changeStudentPassword = async (id, oldPassword, newPassword) => {
   }
 };
 
-export const changeTeacherInfo = async (id, jwt, name, gender, title, college, department) => {
-  const requestBody = {
-    first: id,
-    second: jwt,
-    third: name,
-    fourth: gender,
-    fifth: title,
-    sixth: college,
-    seventh: department
-  };
-
-  try {
-    const response = await apiClient.post('/User/change_teacher_info', requestBody);
-    return { success: true, data: response.data };
-  } catch (error) {
-    return handleApiError(error, 'info_change');
-  }
-};
-
-export const changeStudentInfo = async (id, jwt, name, gender, major, college, department) => {
-  const requestBody = {
-    first: id,
-    second: jwt,
-    third: name,
-    fourth: gender,
-    fifth: major,
-    sixth: college,
-    seventh: department
-  };
-
-  try {
-    const response = await apiClient.post('/User/change_student_info', requestBody);
-    return { success: true, data: response.data };
-  } catch (error) {
-    return handleApiError(error, 'info_change');
-  }
-};
-
 export const getTeacherInfo = async (id, jwt, userType, teacherId) => {
   const activeToken = resolveActiveToken(jwt);
   const requestBody = {
@@ -283,8 +245,6 @@ export default {
   registerStudent,
   changeTeacherPassword,
   changeStudentPassword,
-  changeTeacherInfo,
-  changeStudentInfo,
   getTeacherInfo,
   getStudentInfo
 };
