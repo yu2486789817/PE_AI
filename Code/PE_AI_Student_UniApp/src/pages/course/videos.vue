@@ -38,6 +38,22 @@ onMounted(() => {
 	loadVideos();
 });
 
+const resolveVideoUrl = (rawUrl) => {
+	if (!rawUrl) return '';
+	// 旧的本机文件服务器链接：改写为走后端文件接口
+	if (rawUrl.includes('localhost:5002') || rawUrl.includes('47.121.177.100:5002')) {
+		const filename = rawUrl.substring(rawUrl.lastIndexOf('/') + 1);
+		return request.buildURL(`/Teaching-video/files/${filename}`);
+	}
+	// 已是完整 URL（如 Supabase 直链），小程序无法跟随 302，需直接使用
+	if (/^https?:\/\//i.test(rawUrl)) {
+		return rawUrl;
+	}
+	// 后端相对路径：拼成完整地址
+	const filename = rawUrl.substring(rawUrl.lastIndexOf('/') + 1);
+	return request.buildURL(`/Teaching-video/files/${filename}`);
+};
+
 const loadVideos = async () => {
 	loading.value = true;
 	const user = uni.getStorageSync('user') || {};
@@ -68,13 +84,11 @@ const loadVideos = async () => {
 				if (infoResp.data?.success && infoResp.data?.data) {
 					const d = infoResp.data.data.split('\t\r');
 					const rawUrl = d[2] || '';
-					const filename = rawUrl ? rawUrl.substring(rawUrl.lastIndexOf('/') + 1) : '';
-					const normalizedUrl = filename ? request.buildURL(`/Teaching-video/files/${filename}`) : '';
 					items.push({
 						id: cid,
 						title: d[0] || '未命名视频',
 						description: d[1] || '',
-						url: normalizedUrl || rawUrl,
+						url: resolveVideoUrl(rawUrl),
 						create_time: d[3] || ''
 					});
 				}
@@ -91,11 +105,7 @@ const loadVideos = async () => {
 };
 
 const playVideo = (video) => {
-	let url = video.url;
-	if (url && url.includes('localhost:5002')) {
-		const filename = url.substring(url.lastIndexOf('/') + 1);
-		url = request.buildURL(`/Teaching-video/files/${filename}`);
-	}
+	const url = resolveVideoUrl(video.url);
 
 	uni.navigateTo({ url: `/pages/course/videoPlayer?url=${encodeURIComponent(url)}&title=${encodeURIComponent(video.title)}` });
 };
