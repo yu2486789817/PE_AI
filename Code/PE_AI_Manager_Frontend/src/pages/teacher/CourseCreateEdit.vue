@@ -128,7 +128,7 @@
 
             <!-- 新建提示 -->
             <div v-if="!isEdit && !form.code" class="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p class="text-blue-800">提交后将生成64位邀请码，可分享给学生加入</p>
+              <p class="text-blue-800">提交后将生成 6 位邀请码，可分享给学生加入</p>
             </div>
 
           </div>

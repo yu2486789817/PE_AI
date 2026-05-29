@@ -14,6 +14,7 @@ import com.pe.ai.mapper.CourseMapper;
 import com.pe.ai.mapper.HomeworkMapper;
 import com.pe.ai.mapper.StudentCourseMapper;
 import com.pe.ai.mapper.SubmitMapper;
+import com.pe.ai.service.SupabaseStorageService;
 import com.pe.ai.service.UserService;
 import com.pe.ai.util.RequestValueResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -58,6 +59,7 @@ public class HomeworkSubmissionController {
     private final StudentCourseMapper studentCourseMapper;
     private final AiTypeMapper aiTypeMapper;
     private final UserService userService;
+    private final SupabaseStorageService supabaseStorage;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -69,6 +71,7 @@ public class HomeworkSubmissionController {
                                         StudentCourseMapper studentCourseMapper,
                                         AiTypeMapper aiTypeMapper,
                                         UserService userService,
+                                        SupabaseStorageService supabaseStorage,
                                         ObjectMapper objectMapper) throws IOException {
         this.storageDir = Paths.get(uploadDir).toAbsolutePath().normalize().resolve("homework");
         this.aiBaseUrl = aiBaseUrl.replaceAll("/+$", "");
@@ -78,6 +81,7 @@ public class HomeworkSubmissionController {
         this.studentCourseMapper = studentCourseMapper;
         this.aiTypeMapper = aiTypeMapper;
         this.userService = userService;
+        this.supabaseStorage = supabaseStorage;
         this.objectMapper = objectMapper;
         Files.createDirectories(this.storageDir);
     }
@@ -110,12 +114,26 @@ public class HomeworkSubmissionController {
         String filename = buildFilename(file.getOriginalFilename());
         Path target = storageDir.resolve(filename).normalize();
         if (!target.startsWith(storageDir)) return Result.error(-10, "Invalid filename");
+        // 本地保存一份原始视频，供后台转发给 Yolo 分析使用
         Files.copy(file.getInputStream(), target);
+
+        // 配置了 Supabase 时，原始视频同时上传到云端做持久化，避免临时磁盘清理后丢失
+        String originalVideoUrl = "/Homework/files/" + filename;
+        if (supabaseStorage.isEnabled()) {
+            try {
+                String objectName = "homework/" + filename;
+                originalVideoUrl = supabaseStorage.upload(
+                        objectName, Files.newInputStream(target), Files.size(target), "video/mp4");
+            } catch (Exception e) {
+                // 云上传失败不阻断提交，回退到本地 URL
+                originalVideoUrl = "/Homework/files/" + filename;
+            }
+        }
 
         Submit submit = new Submit();
         submit.setStudentId(studentId);
         submit.setHomeworkId(homework.getId());
-        submit.setVideoUrl("/Homework/files/" + filename);
+        submit.setVideoUrl(originalVideoUrl);
         submit.setAiFeedback("AI分析排队中");
         submit.setCreateTime(LocalDateTime.now());
         submitMapper.insert(submit);

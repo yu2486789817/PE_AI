@@ -177,12 +177,13 @@ const fetchCourses = async () => {
 }
 
 const handleJoin = async () => {
-	if (!courseCode.value || courseCode.value.length !== 6) {
+	const code = (courseCode.value || '').trim().toUpperCase()
+	if (!/^[A-Z0-9]{6}$/.test(code)) {
 		uni.showToast({ title: '请输入 6 位课程码', icon: 'none' })
 		return
 	}
 	const user = uni.getStorageSync('user')
-	const res = await joinCourse(user?.id, courseCode.value)
+	const res = await joinCourse(user?.id, code)
 	if (res.success) {
 		uni.showToast({ title: '加入成功' })
 		showJoinDialog.value = false

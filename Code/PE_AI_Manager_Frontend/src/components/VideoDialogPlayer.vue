@@ -1,38 +1,38 @@
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="title"
-    width="96%"
-    :fullscreen="isMobile"
-    top="3vh"
-    :close-on-click-modal="false"
-    :close-on-press-escape="true"
-    :destroy-on-close="true"
-    center
-    custom-class="video-dialog"
-  >
-    <div class="video-container">
-      <video
-        v-if="videoUrl"
-        :src="videoUrl"
-        controls
-        autoplay
-        muted
-        playsinline
-        preload="metadata"
-        class="video-element"
+  <Teleport to="body">
+    <Transition name="video-fade">
+      <div
+        v-if="visible"
+        class="video-overlay"
+        @click.self="visible = false"
       >
-        您的浏览器不支持 video 标签。
-      </video>
-      <div v-else class="no-video">
-        暂无视频
-      </div>
-    </div>
+        <div class="video-modal">
+          <div class="video-modal__header">
+            <span class="video-modal__title">{{ title }}</span>
+            <button class="video-modal__close" type="button" aria-label="关闭" @click="visible = false">
+              ✕
+            </button>
+          </div>
 
-    <template #footer>
-      <el-button @click="visible = false" size="large">关闭</el-button>
-    </template>
-  </el-dialog>
+          <div class="video-modal__body">
+            <video
+              v-if="videoUrl"
+              :src="videoUrl"
+              controls
+              autoplay
+              muted
+              playsinline
+              preload="metadata"
+              class="video-element"
+            >
+              您的浏览器不支持 video 标签。
+            </video>
+            <div v-else class="no-video">暂无视频</div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -56,72 +56,121 @@ const visible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
-
-// 检测是否移动端
-const isMobile = computed(() => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-})
 </script>
 
 <style scoped>
-:deep(.video-dialog .el-dialog) {
-  max-width: 1600px;
-  height: 94vh;
-  margin: 0 auto;
+/* 遮罩层：teleport 到 body，z-index 远高于侧边栏 (z-50) */
+.video-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.video-modal {
+  width: 100%;
+  max-width: 960px;
+  max-height: 88vh;
+  background: #0f172a;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
 }
 
-:deep(.video-dialog .el-dialog__body) {
-  flex: 1;
-  padding: 16px;
-  overflow: hidden;
+.video-modal__header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: #000;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #1e293b;
+  color: #f8fafc;
 }
 
-.video-container {
-  width: 100%;
-  height: 100%;
+.video-modal__title {
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-modal__close {
+  flex-shrink: 0;
+  margin-left: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.video-modal__close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.video-modal__body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
-  border-radius: 12px;
-  overflow: hidden;
 }
 
 .video-element {
   width: 100%;
-  height: 100%;
-  max-height: 85vh;
+  max-height: calc(88vh - 60px);
   object-fit: contain;
   background: #000;
+  display: block;
 }
 
 .no-video {
   color: #888;
-  font-size: 24px;
+  font-size: 20px;
+  padding: 80px 0;
 }
 
-/* 移动端优化 */
+/* 弹窗淡入淡出 */
+.video-fade-enter-active,
+.video-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.video-fade-enter-from,
+.video-fade-leave-to {
+  opacity: 0;
+}
+
+/* 移动端：占满更大区域但仍受控 */
 @media (max-width: 768px) {
-  :deep(.video-dialog .el-dialog) {
-    width: 100% !important;
-    height: 100vh !important;
-    max-height: 100vh;
-    border-radius: 0;
-    margin: 0 !important;
-  }
-
-  :deep(.video-dialog .el-dialog__header) {
-    padding: 16px;
-  }
-
-  :deep(.video-dialog .el-dialog__body) {
+  .video-overlay {
     padding: 0;
+  }
+
+  .video-modal {
+    max-width: 100%;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .video-element {
+    max-height: calc(100vh - 60px);
   }
 }
 </style>

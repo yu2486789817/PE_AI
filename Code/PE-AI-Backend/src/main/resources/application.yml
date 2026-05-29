@@ -44,3 +44,9 @@ jwt:
 # File upload
 file:
   upload-dir: ./uploads
+
+# Supabase Storage（配置后教学视频改存云端；留空则使用本地磁盘）
+supabase:
+  url: ${SUPABASE_URL:}
+  service-key: ${SUPABASE_SERVICE_KEY:}
+  bucket: ${SUPABASE_BUCKET:teaching-videos}

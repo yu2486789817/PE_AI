@@ -20,3 +20,10 @@ services:
         value: http://localhost:8000
       - key: AICHAT_BASE_URL
         value: http://localhost:5000
+      # Supabase Storage（在 Render 后台填写实际值，勿提交到仓库）
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: teaching-videos

@@ -79,7 +79,7 @@
         <h3 class="text-xl font-bold text-web-ink-900">加入课程</h3>
         <p class="mt-2 text-sm text-web-ink-500">请输入 6 位课程码。</p>
 
-        <input v-model="courseCodeInput" type="text" class="input-base mt-4" maxlength="6" placeholder="例如：123456" />
+        <input v-model="courseCodeInput" type="text" class="input-base mt-4" maxlength="6" placeholder="例如：A1B2C3" />
 
         <p v-if="addCourseMessage" class="mt-3 text-sm" :class="addCourseSuccess ? 'text-green-600' : 'text-red-600'">
           {{ addCourseMessage }}
@@ -243,9 +243,9 @@ const openAddCourseModal = () => {
 }
 
 const handleAddCourse = async () => {
-  const code = courseCodeInput.value.trim()
-  if (!/^\d{6}$/.test(code)) {
-    addCourseMessage.value = '课程码必须是 6 位数字'
+  const code = courseCodeInput.value.trim().toUpperCase()
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    addCourseMessage.value = '课程码必须是 6 位字母或数字'
     addCourseSuccess.value = false
     return
   }

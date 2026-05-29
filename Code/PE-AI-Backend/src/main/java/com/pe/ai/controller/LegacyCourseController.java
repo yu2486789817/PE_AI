@@ -47,6 +47,19 @@ public class LegacyCourseController {
         return RequestValueResolver.getIgnoreCase(body, key);
     }
 
+    // 课程码字符集：大写字母+数字，排除易混字符 I O 0 1
+    private static final String COURSE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final java.security.SecureRandom COURSE_CODE_RANDOM = new java.security.SecureRandom();
+
+    // 生成 6 位课程码（大写字母+数字）
+    private String generateCourseCode() {
+        StringBuilder sb = new StringBuilder(6);
+        for (int i = 0; i < 6; i++) {
+            sb.append(COURSE_CODE_CHARS.charAt(COURSE_CODE_RANDOM.nextInt(COURSE_CODE_CHARS.length())));
+        }
+        return sb.toString();
+    }
+
     private String resolveJwt(Map<String, String> body, HttpServletRequest request) {
         return RequestValueResolver.resolveJwt(body, request);
     }
@@ -303,12 +316,6 @@ public class LegacyCourseController {
             String courseId = getParam(body, "first");
             String teacherId = getParam(body, "second");
             String jwt = resolveJwt(body, request);
-            
-            // 兼容旧版参数的兜底逻辑（如果第一参数是工号，说明是旧版调用）
-            if (courseId != null && courseId.trim().matches("\\d{4,}")) {
-                teacherId = courseId;
-                courseId = "C" + System.currentTimeMillis();
-            }
 
             Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
             if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
@@ -325,9 +332,12 @@ public class LegacyCourseController {
             course.setName(getParam(body, "fourth") != null ? getParam(body, "fourth") : getParam(body, "third"));
             course.setInfo("");
             
-            // 生成20位唯一邀请码（符合数据库 varchar(20) 约束）
-            String generatedCode = java.util.UUID.randomUUID().toString()
-                    .replace("-", "").substring(0, 20);
+            // 生成 6 位唯一课程码（大写字母+数字）
+            String generatedCode;
+            do {
+                generatedCode = generateCourseCode();
+            } while (courseMapper.selectCount(
+                    new LambdaQueryWrapper<Course>().eq(Course::getCode, generatedCode)) > 0);
             course.setCode(generatedCode);
             
             String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
@@ -417,12 +427,6 @@ public class LegacyCourseController {
         
         String courseId = first;
         String teacherId = second;
-        
-        // 自动识别参数翻转 (如果first是全数字工号)
-        if (first != null && first.trim().matches("\\d{4,}")) {
-            teacherId = first;
-            courseId = second;
-        }
 
         if (courseId == null) return Result.error(-10, "Missing course id");
 
@@ -456,12 +460,6 @@ public class LegacyCourseController {
         String courseId = first;
         String teacherId = second;
 
-        // 自动识别参数翻转
-        if (first != null && first.trim().matches("\\d{4,}")) {
-            teacherId = first;
-            courseId = second;
-        }
-
         if (courseId == null) return Result.error(-10, "Missing course id");
 
         Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
@@ -486,12 +484,6 @@ public class LegacyCourseController {
 
         String courseId = first;
         String teacherId = second;
-
-        // 自动识别参数翻转
-        if (first != null && first.trim().matches("\\d{4,}")) {
-            teacherId = first;
-            courseId = second;
-        }
 
         if (courseId == null) return Result.error(-10, "Missing course id");
 

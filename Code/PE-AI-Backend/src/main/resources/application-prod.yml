@@ -44,3 +44,9 @@ jwt:
 
 file:
   upload-dir: ${UPLOAD_DIR:/tmp/pe-ai-uploads}
+
+# Supabase Storage（生产持久化教学视频）
+supabase:
+  url: ${SUPABASE_URL:}
+  service-key: ${SUPABASE_SERVICE_KEY:}
+  bucket: ${SUPABASE_BUCKET:teaching-videos}
