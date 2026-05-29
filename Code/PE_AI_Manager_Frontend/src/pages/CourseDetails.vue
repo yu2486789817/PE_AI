@@ -452,6 +452,47 @@ const fetchCourseDetails = async () => {
 }
 
 // 获取教学视频列表
+// 动态抓取视频封面（首帧）和时长
+const generateVideoMeta = (url, callback) => {
+  if (!url) return callback('', '未知')
+
+  const video = document.createElement('video')
+  video.src = url
+  video.crossOrigin = 'anonymous'
+  video.muted = true
+  video.preload = 'metadata'
+
+  let duration = '未知'
+
+  video.onloadedmetadata = () => {
+    const mins = Math.floor(video.duration / 60).toString().padStart(2, '0')
+    const secs = Math.floor(video.duration % 60).toString().padStart(2, '0')
+    duration = `${mins}:${secs}`
+    // 跳到第 1 秒截取封面
+    try {
+      video.currentTime = Math.min(1, video.duration || 0)
+    } catch {
+      callback('', duration)
+    }
+  }
+
+  video.onseeked = () => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      callback(canvas.toDataURL('image/jpeg'), duration)
+    } catch {
+      // 跨域导致 canvas 被污染时，至少回传时长
+      callback('', duration)
+    }
+  }
+
+  video.onerror = () => callback('', '未知')
+}
+
 const fetchTeachingVideos = async () => {
   videosLoading.value = true
   videosError.value = false
@@ -497,24 +538,21 @@ const fetchTeachingVideos = async () => {
         }
 
         const d = infoResp.data.data.split('\t\r')
-        let videoUrl = d[2]
-
-        let filename = ''
-        if (videoUrl) {
-          const lastSlashIndex = videoUrl.lastIndexOf('/')
-          if (lastSlashIndex !== -1) {
-            filename = videoUrl.substring(lastSlashIndex + 1)
-          } else {
-            filename = videoUrl
-          }
+        const rawUrl = d[2] || ''
+        // 已是完整 URL（Supabase 直链）直接用；旧的相对/本机路径才改写为后端文件接口
+        let videoUrl
+        if (/^https?:\/\//i.test(rawUrl) && !rawUrl.includes(':5002')) {
+          videoUrl = rawUrl
+        } else {
+          const filename = rawUrl ? rawUrl.substring(rawUrl.lastIndexOf('/') + 1) : ''
+          videoUrl = `/Teaching-video/files/${filename}`
         }
-        const correctedUrl = `/Teaching-video/files/${filename}`
 
         return {
           id: classId,
           title: d[0],
           description: d[1],
-          url: correctedUrl,
+          url: videoUrl,
           duration: '00:00',
           cover: '',
           uploadDate: d[3],
@@ -528,6 +566,16 @@ const fetchTeachingVideos = async () => {
 
     const videos = await Promise.all(videoDetailsPromises)
     teachingVideos.value = videos.filter(v => v !== null)
+
+    // 列表渲染后，对每个视频异步抓取封面和时长（操作响应式代理以触发更新）
+    teachingVideos.value.forEach(video => {
+      if (video.url) {
+        generateVideoMeta(video.url, (cover, duration) => {
+          video.cover = cover
+          video.duration = duration
+        })
+      }
+    })
 
     console.log('教学视频加载成功:', teachingVideos.value)
   } catch (err) {

@@ -41,8 +41,9 @@
                class="w-full max-w-2xl bg-white rounded-3xl shadow-xl overflow-hidden transition-all hover:shadow-2xl cursor-pointer"
                @click="playVideo(video)">
             <div class="relative">
-              <div class="w-full h-64 bg-gray-200 flex items-center justify-center">
-                <span class="text-6xl">🎬</span>  <!-- 占位封面 -->
+              <div class="w-full h-64 bg-gray-200 flex items-center justify-center overflow-hidden">
+                <img v-if="video.cover" :src="video.cover" :alt="video.title" class="w-full h-full object-cover" />
+                <span v-else class="text-6xl">🎬</span>
               </div>
               <div class="absolute inset-0 bg-black/30 flex items-center justify-center">
                 <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center text-3xl text-blue-600">
@@ -51,6 +52,10 @@
               </div>
               <div class="absolute top-3 left-3 bg-blue-600 text-white text-xs px-2 py-1 rounded-lg">
                 {{ getCourseName(video.courseId) }}
+              </div>
+              <div v-if="video.duration && video.duration !== '00:00'"
+                   class="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                {{ video.duration }}
               </div>
             </div>
 
@@ -73,18 +78,26 @@
       </div>
 
       <!-- 内联视频播放器 -->
-      <div v-if="showVideoPlayer" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-        <div class="relative w-full max-w-5xl">
-          <button @click="closeVideoPlayer" class="absolute -top-12 right-0 text-white text-3xl hover:text-gray-300 transition-colors z-10">
-            ✕
-          </button>
-          <div class="bg-black rounded-2xl overflow-hidden shadow-2xl" style="height: 70vh;">
-            <InlineVideoPlayer :src="playingVideoUrl" />
-          </div>
-          <div class="mt-4 text-white text-center">
-            <h3 class="text-2xl font-bold mb-2">{{ playingVideoTitle }}</h3>
-          </div>
+      <div v-if="showVideoPlayer"
+           class="fixed inset-0 bg-black/90 z-[3000] flex flex-col items-center justify-center p-6"
+           @click.self="closeVideoPlayer">
+        <button @click="closeVideoPlayer"
+                class="absolute top-5 right-6 text-white text-3xl hover:text-gray-300 transition-colors z-10">
+          ✕
+        </button>
+        <div class="w-full max-w-4xl flex items-center justify-center">
+          <video
+            v-if="playingVideoUrl"
+            :src="playingVideoUrl"
+            controls
+            autoplay
+            playsinline
+            class="w-full max-h-[80vh] rounded-2xl bg-black shadow-2xl"
+          >
+            您的浏览器不支持视频播放
+          </video>
         </div>
+        <h3 class="mt-4 text-xl font-bold text-white text-center">{{ playingVideoTitle }}</h3>
       </div>
     </div>
   </div>
@@ -94,9 +107,59 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
-import InlineVideoPlayer from '../../components/InlineVideoPlayer.vue'
 
 const route = useRoute()
+
+// 规范化视频 URL：完整 URL（Supabase 直链）直接用，旧的本机/相对路径改写走后端
+const resolveVideoUrl = (rawUrl) => {
+  if (!rawUrl) return ''
+  if (rawUrl.includes(':5002') || rawUrl.includes('47.121.177.100')) {
+    const filename = rawUrl.substring(rawUrl.lastIndexOf('/') + 1)
+    return `/Teaching-video/files/${filename}`
+  }
+  if (/^https?:\/\//i.test(rawUrl)) return rawUrl
+  const filename = rawUrl.substring(rawUrl.lastIndexOf('/') + 1)
+  return `/Teaching-video/files/${filename}`
+}
+
+// 动态抓取视频封面（首帧）和时长
+const generateVideoMeta = (url, callback) => {
+  if (!url) return callback('', '未知')
+
+  const video = document.createElement('video')
+  video.src = url
+  video.crossOrigin = 'anonymous'
+  video.muted = true
+  video.preload = 'metadata'
+
+  let duration = '未知'
+
+  video.onloadedmetadata = () => {
+    const mins = Math.floor(video.duration / 60).toString().padStart(2, '0')
+    const secs = Math.floor(video.duration % 60).toString().padStart(2, '0')
+    duration = `${mins}:${secs}`
+    try {
+      video.currentTime = Math.min(1, video.duration || 0)
+    } catch {
+      callback('', duration)
+    }
+  }
+
+  video.onseeked = () => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      callback(canvas.toDataURL('image/jpeg'), duration)
+    } catch {
+      callback('', duration)
+    }
+  }
+
+  video.onerror = () => callback('', '未知')
+}
 
 const courseIdFromRoute = route.params.courseId || ''
 
@@ -241,13 +304,26 @@ const loadVideos = async () => {
           title: d[0],         // title: 教学任务的标题
           description: d[1],   // description: 教学任务的描述
           content_url: d[2],   // content_url: 教学任务对应的视频地址
-          create_time: d[3]   // create_time: 教学任务的创建时间
+          create_time: d[3],   // create_time: 教学任务的创建时间
+          cover: '',
+          duration: '00:00'
         })
       }
     } catch (err) {
       console.error('加载视频失败:', courseId, err)
     }
   }
+
+  // 列表就绪后，异步为每个视频抓取封面和时长（操作响应式代理以触发更新）
+  videos.value.forEach(video => {
+    const url = resolveVideoUrl(video.content_url)
+    if (url) {
+      generateVideoMeta(url, (cover, duration) => {
+        video.cover = cover
+        video.duration = duration
+      })
+    }
+  })
 }
 
 onMounted(loadData)
@@ -267,30 +343,9 @@ const formatDate = (dateString) => {
 }
 
 const playVideo = (video) => {
-  console.log('播放视频:', video)
-  console.log('原始视频URL:', video.content_url)
-
-  let videoUrl = video.content_url
-
-  if (videoUrl && videoUrl.includes('http://47.121.177.100:5002')) {
-    let filename = ''
-    if (videoUrl) {
-      const lastSlashIndex = videoUrl.lastIndexOf('/')
-      if (lastSlashIndex !== -1) {
-        filename = videoUrl.substring(lastSlashIndex + 1)
-      } else {
-        filename = videoUrl
-      }
-    }
-    videoUrl = `/Teaching-video/files/${filename}`
-    console.log('转换后的视频URL:', videoUrl)
-  }
-
-  playingVideoUrl.value = videoUrl
+  playingVideoUrl.value = resolveVideoUrl(video.content_url)
   playingVideoTitle.value = video.title
   showVideoPlayer.value = true
-
-  console.log('播放器URL:', playingVideoUrl.value)
 }
 
 const closeVideoPlayer = () => {
