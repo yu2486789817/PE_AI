@@ -88,6 +88,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import apiClient from '../services/axios.js'
 import { cacheService } from '../services/DataCacheService.js'
+import { parseCourseInfo, parseLegacyIdList } from '../utils/legacyParse.js'
 import PageHeader from '../components/ui/PageHeader.vue'
 import SectionCard from '../components/ui/SectionCard.vue'
 import StatCard from '../components/ui/StatCard.vue'
@@ -133,12 +134,7 @@ const loadCourses = async () => {
     }
 
     const rawIds = String(courseIdResp.data.data || '').trim()
-    if (!rawIds || rawIds === 'NULL') {
-      teacherCourses.value = []
-      return
-    }
-
-    const courseIds = rawIds.split('\t\r').map(id => id.trim()).filter(Boolean)
+    const courseIds = parseLegacyIdList(rawIds)
     if (courseIds.length === 0) {
       teacherCourses.value = []
       return
@@ -160,26 +156,21 @@ const loadCourses = async () => {
 
       if (!courseResp.data.success) return null
 
-      const parts = String(courseResp.data.data || '')
-        .replace(/(\t\r)+$/g, '')
-        .split(/\t\r/)
+      const c = parseCourseInfo(courseResp.data.data, id)
 
       const assignmentCount = homeworkResp.data.success
-        ? String(homeworkResp.data.data || '')
-            .split(/[\t\r\n]+/)
-            .map(s => s.trim())
-            .filter(s => s && s !== 'NULL').length
+        ? parseLegacyIdList(homeworkResp.data.data).length
         : 0
 
       return {
         id,
-        name: parts[1] || '未命名课程',
-        info: parts[2] || '',
-        code: parts[3] || '',
+        name: c.name || '未命名课程',
+        info: c.info,
+        code: c.code,
         subject: id,
-        semester: parts[4] || '',
-        is_active: String(parts[5] || '0'),
-        created_time: parts[6] || '',
+        semester: c.semester,
+        is_active: String(c.isActive || '0'),
+        created_time: c.createdTime,
         assignmentCount
       }
     })

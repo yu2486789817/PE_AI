@@ -198,6 +198,7 @@ import { useRouter, useRoute } from 'vue-router'
 import dayjs from 'dayjs'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseHomeworkInfo } from '../../utils/legacyParse.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -247,7 +248,7 @@ const fetchDetail = async () => {
       return
     }
 
-    const infoData = infoResp.data.data.replace(/(\t\r)+$/g, '').split('\t\r')
+    const hw = parseHomeworkInfo(infoResp.data.data, assignmentId)
 
     // 获取 AI 配置（使用缓存）
     const aiResp = await cacheService.fetchWithCache(`homework_ai_config:${assignmentId}`, () =>
@@ -317,10 +318,10 @@ const fetchDetail = async () => {
     const avgScore = scoreCount > 0 ? (totalScore / scoreCount).toFixed(1) : null
 
     assignment.value = {
-      title: infoData[0],
-      description: infoData[1],
-      deadline: infoData[2],
-      create_time: infoData[3],
+      title: hw.title,
+      description: hw.description,
+      deadline: hw.deadline,
+      create_time: hw.createTime,
       aiType: currentAiType,
       requiredCount: currentRequiredCount,
       aiTypeDisplay: `${aiTypeMap[currentAiType] || '未知动作'}（${currentRequiredCount}次）`

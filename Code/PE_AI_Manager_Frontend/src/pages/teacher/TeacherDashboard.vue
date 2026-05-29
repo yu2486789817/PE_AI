@@ -77,6 +77,7 @@ import { saveAs } from 'file-saver'
 import dayjs from 'dayjs'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseCourseInfo, parseHomeworkInfo, parseLegacyIdList } from '../../utils/legacyParse.js'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import FilterBar from '../../components/ui/FilterBar.vue'
 import StatCard from '../../components/ui/StatCard.vue'
@@ -126,7 +127,7 @@ const loadData = async () => {
     )
     if (!courseIdResp.data.success || !courseIdResp.data.data) return
 
-    const courseIds = String(courseIdResp.data.data).split('\t\r').filter(Boolean)
+    const courseIds = parseLegacyIdList(courseIdResp.data.data)
 
     const coursePromises = courseIds.map((id) =>
       cacheService.fetchWithCache(`course_info:${id}`, () => apiClient.post('/Course/get_info_by_course_id', { First: id }))
@@ -136,8 +137,8 @@ const loadData = async () => {
     courses.value = courseResps
       .map((resp, i) => {
         if (!resp?.data?.data) return null
-        const parts = String(resp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
-        return parts.length > 1 ? { id: courseIds[i], name: parts[1] } : null
+        const c = parseCourseInfo(resp.data.data, courseIds[i])
+        return c.name ? { id: courseIds[i], name: c.name } : null
       })
       .filter(Boolean)
 
@@ -151,7 +152,7 @@ const loadData = async () => {
         })
       )
       if (!hwResp.data.success || !hwResp.data.data) continue
-      const hwIds = String(hwResp.data.data).split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
+      const hwIds = parseLegacyIdList(hwResp.data.data)
 
       const studentResp = await cacheService.fetchWithCache(`course_student_ids:${courseId}`, () =>
         apiClient.post('/Course_student/get_student_id_by_course', {
@@ -169,8 +170,7 @@ const loadData = async () => {
           apiClient.post('/Homework/get_info_by_homework_id', { First: courseId, Second: hwId })
         )
         if (!infoResp.data.success || !infoResp.data.data) continue
-        const infoParts = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
-        const title = infoParts[0] || '未命名作业'
+        const title = parseHomeworkInfo(infoResp.data.data, hwId).title || '未命名作业'
 
         const aiResp = await cacheService.fetchWithCache(`homework_ai_config:${hwId}`, () =>
           apiClient.post('/Homework/get_AI_type', { First: hwId })

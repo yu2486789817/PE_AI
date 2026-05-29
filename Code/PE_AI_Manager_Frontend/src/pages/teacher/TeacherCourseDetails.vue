@@ -116,6 +116,7 @@ import { useRouter, useRoute } from 'vue-router'
 import dayjs from 'dayjs'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseCourseInfo, parseHomeworkInfo, parseLegacyIdList } from '../../utils/legacyParse.js'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import SectionCard from '../../components/ui/SectionCard.vue'
 import StatusTag from '../../components/ui/StatusTag.vue'
@@ -216,17 +217,15 @@ const fetchCourseDetails = async () => {
       return
     }
 
-    const courseParts = String(courseResp.data.data || '')
-      .replace(/(\t\r)+$/g, '')
-      .split(/\t\r/)
+    const c = parseCourseInfo(courseResp.data.data, courseId)
 
     course.value = {
       id: courseId,
-      name: courseParts[1] || '',
-      info: courseParts[2] || '',
-      code: courseParts[3] || '',
+      name: c.name,
+      info: c.info,
+      code: c.code,
       subject: courseId,
-      is_active: String(courseParts[5] || '1'),
+      is_active: String(c.isActive || '1'),
       assignments: []
     }
 
@@ -244,7 +243,7 @@ const fetchCourseDetails = async () => {
       return
     }
 
-    const homeworkIds = String(homeworkResp.data.data).split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
+    const homeworkIds = parseLegacyIdList(homeworkResp.data.data)
     const assignmentPromises = homeworkIds.map(async (id) => {
       const [infoResp, aiResp] = await Promise.all([
         cacheService.fetchWithCache(`homework_info:${id}`, () =>
@@ -257,7 +256,7 @@ const fetchCourseDetails = async () => {
 
       if (!infoResp.data.success || !infoResp.data.data) return null
 
-      const info = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
+      const info = parseHomeworkInfo(infoResp.data.data, id)
       let rawAiType = 'squat'
       if (aiResp.data.success && aiResp.data.data) {
         rawAiType = String(aiResp.data.data).split('\t\r')[0] || 'squat'
@@ -265,10 +264,10 @@ const fetchCourseDetails = async () => {
 
       return {
         id,
-        title: info[0] || '',
-        description: info[1] || '',
-        deadline: info[2] || '',
-        status: info[2] && new Date(info[2]) > new Date() ? '进行中' : '已截止',
+        title: info.title,
+        description: info.description,
+        deadline: info.deadline,
+        status: info.deadline && new Date(info.deadline) > new Date() ? '进行中' : '已截止',
         aiType: rawAiType,
         aiTypeDisplay: aiTypeMap[rawAiType] || '未知动作'
       }

@@ -161,6 +161,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseCourseInfo } from '../../utils/legacyParse.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -204,18 +205,14 @@ const loadCourseData = async () => {
     }
 
 
-    const courseRespData = resp.data.data.replace(/(\t\r)+$/g, '');
-    // 后端按固定位置返回 7 个字段，空字段（如空描述）也要保留占位，不能过滤
-    const courseRespDataArray = courseRespData.split(/\t\r/);
-
-    const d = courseRespDataArray
+    const c = parseCourseInfo(resp.data.data, courseId)
     form.value = {
-      courseId: courseId,          // 只读显示
-      name: d[1],
-      semester: d[4],
-      info: d[2] || '',
-      is_active: d[5] === '1',
-      code: d[3]
+      courseId: courseId,          // 只读显示（课号即课程主键）
+      name: c.name,
+      semester: c.semester,
+      info: c.info,
+      is_active: c.isActive === '1',
+      code: c.code
     }
   } catch (err) {
     console.error(err)

@@ -83,6 +83,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseCourseInfo, splitLegacyRecord, parseLegacyIdList } from '../../utils/legacyParse.js'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import SectionCard from '../../components/ui/SectionCard.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
@@ -116,8 +117,7 @@ const fetchCourseStatus = async () => {
   })
 
   if (!resp?.data?.success || !resp?.data?.data) return
-  const parts = String(resp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
-  courseStatus.value = String(parts[5] || '1')
+  courseStatus.value = String(parseCourseInfo(resp.data.data, courseId).isActive || '1')
 }
 
 const fetchStudents = async () => {
@@ -139,9 +139,8 @@ const fetchStudents = async () => {
     if (!idResp.data.success) return
 
     const studentIdStr = idResp.data.data
-    if (!studentIdStr || studentIdStr === 'NULL') return
-
-    const studentIds = studentIdStr.split('\t\r').filter(Boolean)
+    const studentIds = parseLegacyIdList(studentIdStr)
+    if (studentIds.length === 0) return
 
     const studentPromises = studentIds.map(async (id) => {
       try {
@@ -158,7 +157,7 @@ const fetchStudents = async () => {
           return { id, name: null, gender: null, major: null, college: null, department: null }
         }
 
-        const parts = String(infoResp.data.data || '').replace(/(\t\r)+$/g, '').split(/\t\r/)
+        const parts = splitLegacyRecord(infoResp.data.data)
         return {
           id,
           name: parts[0] || null,

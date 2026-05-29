@@ -103,6 +103,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import { cacheService } from '@/services/DataCacheService'
+import { parseCourseInfo, parseHomeworkInfo, parseLegacyIdList } from '../../utils/legacyParse.js'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import FilterBar from '../../components/ui/FilterBar.vue'
 import StatCard from '../../components/ui/StatCard.vue'
@@ -147,18 +148,19 @@ const loadData = async () => {
       return
     }
 
-    const courseIds = String(courseResp.data.data || '').split('\t\r').filter(Boolean)
+    const courseIds = parseLegacyIdList(courseResp.data.data)
     const coursePromises = courseIds.map((id) =>
       cacheService.fetchWithCache(`course_info:${id}`, () => apiClient.post('/Course/get_info_by_course_id', { First: id }))
     )
     const courseResps = await Promise.all(coursePromises)
 
-    const processedResponses = courseResps.map((resp) => {
-      if (!resp?.data?.data) return []
-      return String(resp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
-    })
-
-    courses.value = processedResponses.filter((r) => r[0] >= 0).map((r, i) => ({ id: courseIds[i], name: r[1] }))
+    courses.value = courseResps
+      .map((resp, i) => {
+        if (!resp?.data?.data) return null
+        const c = parseCourseInfo(resp.data.data, courseIds[i])
+        return c.name ? { id: courseIds[i], name: c.name } : null
+      })
+      .filter(Boolean)
 
     const tempAssignments = []
     for (const courseId of courseIds) {
@@ -171,7 +173,7 @@ const loadData = async () => {
         })
       )
       if (!hwResp.data.success || !hwResp.data.data) continue
-      const hwIds = String(hwResp.data.data).split('\t\r').map(s => s.trim()).filter(s => s && s !== 'NULL')
+      const hwIds = parseLegacyIdList(hwResp.data.data)
 
       const studentResp = await cacheService.fetchWithCache(`course_student_ids:${courseId}`, () =>
         apiClient.post('/Course_student/get_student_id_by_course', {
@@ -190,8 +192,8 @@ const loadData = async () => {
         )
         if (!infoResp.data.success) continue
 
-        const d = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
-        const deadline = new Date(d[2])
+        const hw = parseHomeworkInfo(infoResp.data.data, hwId)
+        const deadline = new Date(hw.deadline)
         const status = deadline > new Date() ? '进行中' : '已截止'
 
         const aiResp = await cacheService.fetchWithCache(`hw_ai_type:${hwId}`, () =>
@@ -255,10 +257,10 @@ const loadData = async () => {
         tempAssignments.push({
           id: hwId,
           courseId,
-          title: d[0],
-          description: d[1],
-          deadline: d[2],
-          create_time: d[3],
+          title: hw.title,
+          description: hw.description,
+          deadline: hw.deadline,
+          create_time: hw.createTime,
           aiType: rawAiType,
           aiTypeDisplay: aiTypeMap[rawAiType] || '标准动作',
           status,

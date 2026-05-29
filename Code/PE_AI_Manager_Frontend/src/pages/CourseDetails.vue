@@ -182,6 +182,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { apiClient } from '../services/axios'
+import { parseCourseInfo, parseHomeworkInfo, parseLegacyIdList } from '../utils/legacyParse.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -223,19 +224,16 @@ const fetchCourseDetails = async () => {
     })
 
     if (courseResponse.data.success && courseResponse.data.data) {
-      // 解析课程数据字符串，格式为: 教师id\t\r课程名字\t\r课程描述\t\r课程码\t\r课程所在学期\t\r课程是否正在进行(1是0否)\t\r课程创建时间
-      const courseDataArray = courseResponse.data.data.split('\t\r');
+      // 解析课程数据（来自 get_info_by_course_id），课号即课程主键 id
+      const c = parseCourseInfo(courseResponse.data.data, courseId)
 
-      console.log('课程数据:', courseDataArray)
-
-      // 安全地解析课程数据，处理字段可能为空的情况
-      const teacherId = courseDataArray[0] || '';
-      const courseName = courseDataArray[1] || '未命名课程';
-      const courseDescription = courseDataArray[2] || '暂无描述';
-      const courseCode = courseDataArray[3] || '';
-      const courseTerm = courseDataArray[4] || '';
-      const isActive = courseDataArray[5] || '0';
-      const createTime = courseDataArray[6] || '';
+      const teacherId = c.teacherId;
+      const courseName = c.name || '未命名课程';
+      const courseDescription = c.info || '暂无描述';
+      const courseCode = c.code;
+      const courseTerm = c.semester;
+      const isActive = c.isActive || '0';
+      const createTime = c.createdTime;
 
       console.log('解析后的课程数据:', {
         teacherId,
@@ -256,8 +254,8 @@ const fetchCourseDetails = async () => {
 
         let assignments = []
         if (homeworkResponse.data.success && homeworkResponse.data.data && homeworkResponse.data.data.trim() !== 'NULL') {
-          // 解析作业ID列表（用\t\r分隔），排除空值与 NULL 哨兵
-          const homeworkIdList = homeworkResponse.data.data.split('\t\r').map(id => id.trim()).filter(id => id && id !== 'NULL')
+          // 解析作业ID列表，排除空值与 NULL 哨兵
+          const homeworkIdList = parseLegacyIdList(homeworkResponse.data.data)
 
           // 为每个作业ID获取作业详情
           const assignmentDetailsPromises = homeworkIdList.map(async (homeworkId) => {
@@ -268,8 +266,8 @@ const fetchCourseDetails = async () => {
               })
 
               if (assignmentResponse.data.success && assignmentResponse.data.data) {
-                const assignmentData = assignmentResponse.data.data.split('\t\r');
-                const deadline = assignmentData[2] || '待定';
+                const hw = parseHomeworkInfo(assignmentResponse.data.data, homeworkId.trim());
+                const deadline = hw.deadline || '待定';
 
                 // 检查提交状态
                 let submitStatus = '进行中';
@@ -302,10 +300,10 @@ const fetchCourseDetails = async () => {
 
                 return {
                   id: homeworkId.trim(),
-                  title: assignmentData[0] || `作业 ${homeworkId.trim()}`,
-                  description: assignmentData[1] || '暂无描述',
+                  title: hw.title || `作业 ${homeworkId.trim()}`,
+                  description: hw.description || '暂无描述',
                   deadline: deadline,
-                  create_time: assignmentData[3] || '',
+                  create_time: hw.createTime || '',
                   course_id: courseId,
                   subject: courseId || '未知课号',
                   status: submitStatus,

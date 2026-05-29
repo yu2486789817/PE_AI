@@ -97,6 +97,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { apiClient } from '../services/axios'
+import { parseCourseInfo, parseLegacyIdList } from '../utils/legacyParse.js'
 
 const showAddCourseModal = ref(false)
 const courseCodeInput = ref('')
@@ -142,12 +143,11 @@ const fetchCourseList = async () => {
     }
 
     const raw = String(response.data.data || '').trim()
-    if (!raw || raw === 'NULL') {
+    const courseIdList = parseLegacyIdList(raw)
+    if (courseIdList.length === 0) {
       courses.value = []
       return
     }
-
-    const courseIdList = raw.split('\t\r').map((id) => id.trim()).filter(Boolean)
 
     const courseDetails = await Promise.all(
       courseIdList.map(async (courseId) => {
@@ -159,8 +159,8 @@ const fetchCourseList = async () => {
 
           if (!detailResponse.data.success || !detailResponse.data.data) return null
 
-          const arr = String(detailResponse.data.data).split('\t\r')
-          const isActive = String(arr[5] || '0')
+          const c = parseCourseInfo(detailResponse.data.data, courseId)
+          const isActive = String(c.isActive || '0')
 
           const homeworkResponse = await apiClient.post('/Homework/get_homework_id_by_course', {
             first: '0',
@@ -174,7 +174,7 @@ const fetchCourseList = async () => {
           let completionRate = 0
 
           if (homeworkResponse.data.success && homeworkResponse.data.data && homeworkResponse.data.data !== 'NULL') {
-            const homeworkIds = String(homeworkResponse.data.data).split('\t\r').map((x) => x.trim()).filter(Boolean)
+            const homeworkIds = parseLegacyIdList(homeworkResponse.data.data)
             totalAssignments = homeworkIds.length
 
             // 查询每个作业的提交状态
@@ -209,8 +209,8 @@ const fetchCourseList = async () => {
 
           return {
             id: courseId,
-            name: arr[1] || '未命名课程',
-            description: arr[2] || '',
+            name: c.name || '未命名课程',
+            description: c.info || '',
             subject: courseId,
             status: isActive === '1' ? '进行中' : '已结束',
             totalAssignments,
