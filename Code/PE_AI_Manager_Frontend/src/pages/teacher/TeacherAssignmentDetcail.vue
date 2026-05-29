@@ -247,7 +247,7 @@ const fetchDetail = async () => {
       return
     }
 
-    const infoData = infoResp.data.data.trim().replace(/\t\r$/g, '').split('\t\r').filter(Boolean)
+    const infoData = infoResp.data.data.replace(/(\t\r)+$/g, '').split('\t\r')
 
     // 获取 AI 配置（使用缓存）
     const aiResp = await cacheService.fetchWithCache(`homework_ai_config:${assignmentId}`, () =>

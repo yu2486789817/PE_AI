@@ -116,7 +116,7 @@ const fetchCourseStatus = async () => {
   })
 
   if (!resp?.data?.success || !resp?.data?.data) return
-  const parts = String(resp.data.data).trim().replace(/\t\r$/g, '').split(/\t\r/).filter(Boolean)
+  const parts = String(resp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
   courseStatus.value = String(parts[5] || '1')
 }
 
@@ -158,7 +158,7 @@ const fetchStudents = async () => {
           return { id, name: null, gender: null, major: null, college: null, department: null }
         }
 
-        const parts = String(infoResp.data.data || '').trim().replace(/\t\r$/g, '').split(/\t\r/).filter(Boolean)
+        const parts = String(infoResp.data.data || '').replace(/(\t\r)+$/g, '').split(/\t\r/)
         return {
           id,
           name: parts[0] || null,

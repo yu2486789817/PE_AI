@@ -204,8 +204,9 @@ const loadCourseData = async () => {
     }
 
 
-    const courseRespData = resp.data.data.trim().replace(/\t\r$/g, '');
-    const courseRespDataArray = courseRespData.split(/\t\r/).filter(item => item !== '');
+    const courseRespData = resp.data.data.replace(/(\t\r)+$/g, '');
+    // 后端按固定位置返回 7 个字段，空字段（如空描述）也要保留占位，不能过滤
+    const courseRespDataArray = courseRespData.split(/\t\r/);
 
     const d = courseRespDataArray
     form.value = {

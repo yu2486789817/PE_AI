@@ -155,7 +155,7 @@ const loadData = async () => {
 
     const processedResponses = courseResps.map((resp) => {
       if (!resp?.data?.data) return []
-      return String(resp.data.data).trim().replace(/\t\r$/g, '').split(/\t\r/).filter(Boolean)
+      return String(resp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
     })
 
     courses.value = processedResponses.filter((r) => r[0] >= 0).map((r, i) => ({ id: courseIds[i], name: r[1] }))
@@ -190,7 +190,7 @@ const loadData = async () => {
         )
         if (!infoResp.data.success) continue
 
-        const d = String(infoResp.data.data).split('\t\r').filter(Boolean)
+        const d = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
         const deadline = new Date(d[2])
         const status = deadline > new Date() ? '进行中' : '已截止'
 
@@ -232,7 +232,7 @@ const loadData = async () => {
             )
 
             if (detailResp.data.success && detailResp.data.data) {
-              const detail = String(detailResp.data.data).split('\t\r').filter(Boolean)
+              const detail = String(detailResp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
               return parseInt(detail[1], 10) || 0
             }
             return null

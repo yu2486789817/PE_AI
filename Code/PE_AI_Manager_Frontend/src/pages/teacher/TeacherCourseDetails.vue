@@ -217,10 +217,8 @@ const fetchCourseDetails = async () => {
     }
 
     const courseParts = String(courseResp.data.data || '')
-      .trim()
-      .replace(/\t\r$/g, '')
+      .replace(/(\t\r)+$/g, '')
       .split(/\t\r/)
-      .filter(Boolean)
 
     course.value = {
       id: courseId,
@@ -259,7 +257,7 @@ const fetchCourseDetails = async () => {
 
       if (!infoResp.data.success || !infoResp.data.data) return null
 
-      const info = String(infoResp.data.data).trim().replace(/\t\r$/g, '').split(/\t\r/).filter(Boolean)
+      const info = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split(/\t\r/)
       let rawAiType = 'squat'
       if (aiResp.data.success && aiResp.data.data) {
         rawAiType = String(aiResp.data.data).split('\t\r')[0] || 'squat'

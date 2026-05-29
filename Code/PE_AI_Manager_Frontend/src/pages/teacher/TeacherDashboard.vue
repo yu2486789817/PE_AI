@@ -136,7 +136,7 @@ const loadData = async () => {
     courses.value = courseResps
       .map((resp, i) => {
         if (!resp?.data?.data) return null
-        const parts = String(resp.data.data).trim().replace(/\t\r$/g, '').split('\t\r').filter(Boolean)
+        const parts = String(resp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
         return parts.length > 1 ? { id: courseIds[i], name: parts[1] } : null
       })
       .filter(Boolean)
@@ -169,7 +169,7 @@ const loadData = async () => {
           apiClient.post('/Homework/get_info_by_homework_id', { First: courseId, Second: hwId })
         )
         if (!infoResp.data.success || !infoResp.data.data) continue
-        const infoParts = String(infoResp.data.data).split('\t\r').filter(Boolean)
+        const infoParts = String(infoResp.data.data).replace(/(\t\r)+$/g, '').split('\t\r')
         const title = infoParts[0] || '未命名作业'
 
         const aiResp = await cacheService.fetchWithCache(`homework_ai_config:${hwId}`, () =>

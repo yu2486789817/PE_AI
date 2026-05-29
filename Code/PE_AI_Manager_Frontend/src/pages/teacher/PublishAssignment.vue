@@ -225,8 +225,8 @@ const loadCourses = async () => {
 
 
 
-    const courseRespData = infoResp.data.data.trim().replace(/\t\r$/g, '');
-    const courseRespDataArray = courseRespData.split(/\t\r/).filter(item => item !== '');
+    const courseRespData = infoResp.data.data.replace(/(\t\r)+$/g, '');
+    const courseRespDataArray = courseRespData.split(/\t\r/);
 
       return {
         id: String(id),
