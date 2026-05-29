@@ -44,6 +44,15 @@ public final class RequestValueResolver {
         return normalized.isEmpty() ? null : normalized;
     }
 
+    private static boolean isLikelyToken(String s) {
+        if (s == null) return false;
+        String val = s.trim();
+        if (val.length() >= 78 && val.substring(0, 14).matches("\\d{14}")) {
+            return true;
+        }
+        return val.length() >= 40;
+    }
+
     public static String resolveJwt(Map<String, String> body, HttpServletRequest request) {
         // 1. Try explicit JWT/token keys first
         String jwt = getIgnoreCase(body, "jwt", "token", "authorization");
@@ -51,13 +60,13 @@ public final class RequestValueResolver {
             return normalizeBearerToken(jwt);
         }
 
-        // 2. Prioritize positional parameter that actually looks like a token (length >= 14)
+        // 2. Prioritize positional parameter that actually looks like a token
         String third = getIgnoreCase(body, "third");
         String second = getIgnoreCase(body, "second");
 
-        if (third != null && third.trim().length() >= 14) {
+        if (isLikelyToken(third)) {
             jwt = third;
-        } else if (second != null && second.trim().length() >= 14) {
+        } else if (isLikelyToken(second)) {
             jwt = second;
         } else if (third != null && !third.isBlank()) {
             jwt = third;
