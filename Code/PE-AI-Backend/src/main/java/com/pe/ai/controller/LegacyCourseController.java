@@ -324,9 +324,9 @@ public class LegacyCourseController {
         course.setName(getParam(body, "fourth") != null ? getParam(body, "fourth") : getParam(body, "third"));
         course.setInfo("");
         
-        // 生成64位唯一邀请码
-        String generatedCode = (java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString())
-                .replace("-", "").substring(0, 64);
+        // 生成20位唯一邀请码（符合数据库 varchar(20) 约束）
+        String generatedCode = java.util.UUID.randomUUID().toString()
+                .replace("-", "").substring(0, 20);
         course.setCode(generatedCode);
         
         String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
