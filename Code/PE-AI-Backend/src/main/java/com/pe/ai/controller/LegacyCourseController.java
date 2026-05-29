@@ -299,44 +299,49 @@ public class LegacyCourseController {
     @PostMapping("/Course/new_course")
     public Result<List<String>> newCourse(@RequestBody Map<String, String> body,
                                           HttpServletRequest request) {
-        String courseId = getParam(body, "first");
-        String teacherId = getParam(body, "second");
-        String jwt = resolveJwt(body, request);
-        
-        // 兼容旧版参数的兜底逻辑（如果第一参数是工号，说明是旧版调用）
-        if (courseId != null && courseId.trim().matches("\\d{4,}")) {
-            teacherId = courseId;
-            courseId = "C" + System.currentTimeMillis();
+        try {
+            String courseId = getParam(body, "first");
+            String teacherId = getParam(body, "second");
+            String jwt = resolveJwt(body, request);
+            
+            // 兼容旧版参数的兜底逻辑（如果第一参数是工号，说明是旧版调用）
+            if (courseId != null && courseId.trim().matches("\\d{4,}")) {
+                teacherId = courseId;
+                courseId = "C" + System.currentTimeMillis();
+            }
+
+            Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
+            if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
+
+            // 检查课号是否已存在
+            Course existing = courseMapper.selectById(courseId);
+            if (existing != null) {
+                return Result.error(-21, "Course ID already exists");
+            }
+
+            Course course = new Course();
+            course.setId(courseId);
+            course.setTeacherId(teacherId);
+            course.setName(getParam(body, "fourth") != null ? getParam(body, "fourth") : getParam(body, "third"));
+            course.setInfo("");
+            
+            // 生成20位唯一邀请码（符合数据库 varchar(20) 约束）
+            String generatedCode = java.util.UUID.randomUUID().toString()
+                    .replace("-", "").substring(0, 20);
+            course.setCode(generatedCode);
+            
+            String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
+            course.setSemester(semester != null ? Integer.parseInt(semester.trim()) : 1);
+            course.setIsActive(1);
+            course.setCreatedTime(LocalDateTime.now());
+            courseMapper.insert(course);
+
+            // 前端 expects an array/list where index 1 is the generated invitation code
+            return Result.success(List.of(courseId, generatedCode));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error(-500, "Error: " + e.toString());
         }
-
-        Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
-        if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
-
-        // 检查课号是否已存在
-        Course existing = courseMapper.selectById(courseId);
-        if (existing != null) {
-            return Result.error(-21, "Course ID already exists");
-        }
-
-        Course course = new Course();
-        course.setId(courseId);
-        course.setTeacherId(teacherId);
-        course.setName(getParam(body, "fourth") != null ? getParam(body, "fourth") : getParam(body, "third"));
-        course.setInfo("");
-        
-        // 生成20位唯一邀请码（符合数据库 varchar(20) 约束）
-        String generatedCode = java.util.UUID.randomUUID().toString()
-                .replace("-", "").substring(0, 20);
-        course.setCode(generatedCode);
-        
-        String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
-        course.setSemester(semester != null ? Integer.parseInt(semester.trim()) : 1);
-        course.setIsActive(1);
-        course.setCreatedTime(LocalDateTime.now());
-        courseMapper.insert(course);
-
-        // 前端 expects an array/list where index 1 is the generated invitation code
-        return Result.success(List.of(courseId, generatedCode));
     }
 
     @PostMapping("/Course/delete_course")
