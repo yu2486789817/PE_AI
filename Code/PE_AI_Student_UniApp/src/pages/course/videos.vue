@@ -9,8 +9,24 @@
 		</view>
 
 		<view v-else>
-			<view class="video-card" v-for="video in videos" :key="video.id" @click="playVideo(video)">
-				<view class="video-cover"><text class="play-icon">▶</text></view>
+			<view class="video-card" v-for="(video, idx) in videos" :key="video.id" @click="playVideo(video)">
+				<view class="video-cover">
+					<video
+						v-if="video.url"
+						class="cover-video"
+						:src="video.url"
+						:controls="false"
+						:show-center-play-btn="false"
+						:show-play-btn="false"
+						:enable-progress-gesture="false"
+						object-fit="cover"
+						:initial-time="0.5"
+						@loadedmetadata="onMeta($event, idx)"
+					></video>
+					<view class="cover-mask"></view>
+					<text class="play-icon">▶</text>
+					<text class="duration-badge" v-if="video.duration">{{ video.duration }}</text>
+				</view>
 				<view class="video-info">
 					<text class="video-title">{{ video.title }}</text>
 					<text class="video-desc">{{ video.description }}</text>
@@ -89,6 +105,7 @@ const loadVideos = async () => {
 						title: d[0] || '未命名视频',
 						description: d[1] || '',
 						url: resolveVideoUrl(rawUrl),
+						duration: '',
 						create_time: d[3] || ''
 					});
 				}
@@ -108,6 +125,15 @@ const playVideo = (video) => {
 	const url = resolveVideoUrl(video.url);
 
 	uni.navigateTo({ url: `/pages/course/videoPlayer?url=${encodeURIComponent(url)}&title=${encodeURIComponent(video.title)}` });
+};
+
+// <video> 元数据加载完成，回填真实时长
+const onMeta = (e, idx) => {
+	const dur = e?.detail?.duration;
+	if (!dur || Number.isNaN(dur) || !videos.value[idx]) return;
+	const mins = String(Math.floor(dur / 60)).padStart(2, '0');
+	const secs = String(Math.floor(dur % 60)).padStart(2, '0');
+	videos.value[idx].duration = `${mins}:${secs}`;
 };
 
 const formatDate = (s) => {
@@ -163,16 +189,47 @@ const formatDate = (s) => {
 }
 
 .video-cover {
+	position: relative;
 	height: 240rpx;
 	background: linear-gradient(130deg, #1a57e8 0%, #2f86ff 45%, #18bcff 100%);
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	overflow: hidden;
+}
+
+.cover-video {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.cover-mask {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.18);
 }
 
 .play-icon {
+	position: relative;
+	z-index: 2;
 	font-size: 72rpx;
 	color: rgba(255, 255, 255, 0.95);
+	text-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.35);
+}
+
+.duration-badge {
+	position: absolute;
+	right: 16rpx;
+	bottom: 16rpx;
+	z-index: 2;
+	padding: 4rpx 12rpx;
+	border-radius: 8rpx;
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	font-size: 20rpx;
+	line-height: 1.4;
 }
 
 .video-info {

@@ -28,7 +28,7 @@ defineProps({
 	},
 	showStatusBar: {
 		type: Boolean,
-		default: true
+		default: false
 	}
 });
 

@@ -23,10 +23,6 @@
 			</InfoCard>
 
 			<InfoCard class="mt-3">
-				<view class="menu-item" @click="goTo('/pages/profile/edit')">
-					<text class="menu-text">编辑个人信息</text>
-					<text class="arrow">›</text>
-				</view>
 				<view class="menu-item" @click="goTo('/pages/profile/password')">
 					<text class="menu-text">修改密码</text>
 					<text class="arrow">›</text>
