@@ -11,9 +11,12 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# OMP/MKL optimization for CPU-only containers (prevents CPU core thrashing)
-ENV OMP_NUM_THREADS=2
-ENV MKL_NUM_THREADS=2
+# Thread config for CPU inference.
+# Defaults removed so PyTorch/OpenMP auto-detect all available cores
+# (the old hard-coded "2" crippled performance on multi-core hosts like AutoDL).
+# Override at runtime if you need to cap, e.g. -e OMP_NUM_THREADS=8
+# ENV OMP_NUM_THREADS=2
+# ENV MKL_NUM_THREADS=2
 
 # Set working directory
 WORKDIR /app

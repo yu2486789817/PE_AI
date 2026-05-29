@@ -33,6 +33,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
 HOMEWORK_DIR = os.path.join(SCRIPT_DIR, "homework")
 
+# ================= CPU 推理性能配置（可用环境变量覆盖）=================
+# 跳帧因子：每 N 帧做一次 YOLO 推理（计数场景下 2~3 不影响准确度，显著降耗）
+PROCESS_SKIP_FACTOR = max(1, int(os.environ.get("PROCESS_SKIP_FACTOR", "3")))
+# 推理输入分辨率：640 为默认，CPU 上降到 320 可快 2~4 倍，对大幅度动作精度影响小
+INFER_IMGSZ = int(os.environ.get("INFER_IMGSZ", "320"))
+
 app = FastAPI(title="AI Gym API", description="健身动作识别后端API")
 
 # 设置日志
@@ -118,7 +124,8 @@ class VideoProcessor:
             kpts_to_check=kpts_to_check,
             line_thickness=2,
             pose_type=pose_type,
-            fps=fps
+            fps=fps,
+            imgsz=INFER_IMGSZ
         )
 
         self.gym_objects[session_id] = gym_object
@@ -227,7 +234,7 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
         })
 
         # 视频编码器设置
-        SKIP_FACTOR = 1
+        SKIP_FACTOR = PROCESS_SKIP_FACTOR
         output_fps = fps / SKIP_FACTOR
 
         # 使用 MJPG 编码保存为 AVI（兼容性最好）
