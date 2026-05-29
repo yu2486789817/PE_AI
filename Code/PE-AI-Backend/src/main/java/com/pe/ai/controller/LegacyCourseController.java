@@ -294,31 +294,49 @@ public class LegacyCourseController {
 
     /**
      * 新建课程
-     * 前端发: { first: teacherId, second: jwt, third: name, fourth: info, fifth: code, sixth: semester }
+     * 前端发送的真实布局: { First: courseId, Second: teacherId, Third: jwt, Fourth: name, Fifth: semester }
      */
     @PostMapping("/Course/new_course")
-    public Result<Void> newCourse(@RequestBody Map<String, String> body,
-                                  HttpServletRequest request) {
-        String teacherId = getParam(body, "first");
+    public Result<List<String>> newCourse(@RequestBody Map<String, String> body,
+                                          HttpServletRequest request) {
+        String courseId = getParam(body, "first");
+        String teacherId = getParam(body, "second");
         String jwt = resolveJwt(body, request);
+        
+        // 兼容旧版参数的兜底逻辑（如果第一参数是工号，说明是旧版调用）
+        if (courseId != null && courseId.trim().matches("\\d{4,}")) {
+            teacherId = courseId;
+            courseId = "C" + System.currentTimeMillis();
+        }
 
         Result<Void> auth = userService.checkJwt(1, teacherId, jwt);
         if (auth.getCode() < 0) return Result.error(auth.getCode(), auth.getMessage());
 
+        // 检查课号是否已存在
+        Course existing = courseMapper.selectById(courseId);
+        if (existing != null) {
+            return Result.error(-21, "Course ID already exists");
+        }
+
         Course course = new Course();
-        // Generate a simple course ID or UUID
-        String courseId = "C" + System.currentTimeMillis();
         course.setId(courseId);
         course.setTeacherId(teacherId);
-        course.setName(getParam(body, "third"));
-        course.setInfo(getParam(body, "fourth"));
-        course.setCode(getParam(body, "fifth"));
-        String semester = getParam(body, "sixth");
-        course.setSemester(semester != null ? Integer.parseInt(semester) : 1);
+        course.setName(getParam(body, "fourth") != null ? getParam(body, "fourth") : getParam(body, "third"));
+        course.setInfo("");
+        
+        // 生成64位唯一邀请码
+        String generatedCode = (java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString())
+                .replace("-", "").substring(0, 64);
+        course.setCode(generatedCode);
+        
+        String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
+        course.setSemester(semester != null ? Integer.parseInt(semester.trim()) : 1);
         course.setIsActive(1);
         course.setCreatedTime(LocalDateTime.now());
         courseMapper.insert(course);
-        return Result.success();
+
+        // 前端 expects an array/list where index 1 is the generated invitation code
+        return Result.success(List.of(courseId, generatedCode));
     }
 
     @PostMapping("/Course/delete_course")
@@ -388,12 +406,18 @@ public class LegacyCourseController {
     @PostMapping("/Course/edit_course")
     public Result<Void> editCourse(@RequestBody Map<String, String> body,
                                    HttpServletRequest request) {
-        String teacherId = getParam(body, "first");
+        String first = getParam(body, "first");
+        String second = getParam(body, "second");
         String jwt = resolveJwt(body, request);
-        String courseId = getParam(body, "second");
-        if (courseId == null) courseId = getParam(body, "first");
-        String name = getParam(body, "fourth");
-        String semesterStr = getParam(body, "fifth");
+        
+        String courseId = first;
+        String teacherId = second;
+        
+        // 自动识别参数翻转 (如果first是全数字工号)
+        if (first != null && first.trim().matches("\\d{4,}")) {
+            teacherId = first;
+            courseId = second;
+        }
 
         if (courseId == null) return Result.error(-10, "Missing course id");
 
@@ -403,6 +427,9 @@ public class LegacyCourseController {
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        String name = getParam(body, "fourth");
+        String semesterStr = getParam(body, "fifth");
 
         if (name != null) course.setName(name);
         if (semesterStr != null && !semesterStr.isEmpty()) {
@@ -417,11 +444,18 @@ public class LegacyCourseController {
     @PostMapping("/Course/edit_info")
     public Result<Void> editCourseInfo(@RequestBody Map<String, String> body,
                                        HttpServletRequest request) {
-        String teacherId = getParam(body, "first");
+        String first = getParam(body, "first");
+        String second = getParam(body, "second");
         String jwt = resolveJwt(body, request);
-        String courseId = getParam(body, "second");
-        if (courseId == null) courseId = getParam(body, "first");
-        String info = getParam(body, "fourth");
+
+        String courseId = first;
+        String teacherId = second;
+
+        // 自动识别参数翻转
+        if (first != null && first.trim().matches("\\d{4,}")) {
+            teacherId = first;
+            courseId = second;
+        }
 
         if (courseId == null) return Result.error(-10, "Missing course id");
 
@@ -432,6 +466,7 @@ public class LegacyCourseController {
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
 
+        String info = getParam(body, "fourth");
         course.setInfo(info);
         courseMapper.updateById(course);
         return Result.success();
@@ -440,11 +475,18 @@ public class LegacyCourseController {
     @PostMapping("/Course/edit_is_active")
     public Result<Void> editCourseIsActive(@RequestBody Map<String, String> body,
                                            HttpServletRequest request) {
-        String teacherId = getParam(body, "first");
+        String first = getParam(body, "first");
+        String second = getParam(body, "second");
         String jwt = resolveJwt(body, request);
-        String courseId = getParam(body, "second");
-        if (courseId == null) courseId = getParam(body, "first");
-        String isActiveStr = getParam(body, "fourth");
+
+        String courseId = first;
+        String teacherId = second;
+
+        // 自动识别参数翻转
+        if (first != null && first.trim().matches("\\d{4,}")) {
+            teacherId = first;
+            courseId = second;
+        }
 
         if (courseId == null) return Result.error(-10, "Missing course id");
 
@@ -455,6 +497,7 @@ public class LegacyCourseController {
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
 
+        String isActiveStr = getParam(body, "fourth");
         if (isActiveStr != null && !isActiveStr.isEmpty()) {
             try {
                 course.setIsActive(Integer.parseInt(isActiveStr.trim()));

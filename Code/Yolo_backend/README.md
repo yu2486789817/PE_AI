@@ -1,3 +1,12 @@
+---
+title: Pe Ai Yolo
+emoji: 🏃
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # Yolo_backend - AI 健身动作识别服务
 
 ## 模块概述

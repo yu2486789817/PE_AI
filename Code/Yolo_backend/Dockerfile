@@ -42,8 +42,8 @@ COPY . .
 # Create necessary directories for local media storage
 RUN mkdir -p uploads homework
 
-# Expose FastAPI port
-EXPOSE 8000
+# Expose FastAPI port (Hugging Face Spaces default port is 7860)
+EXPOSE 7860
 
 # Start the FastAPI application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]

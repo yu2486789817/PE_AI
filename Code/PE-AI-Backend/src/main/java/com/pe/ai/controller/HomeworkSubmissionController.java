@@ -153,7 +153,7 @@ public class HomeworkSubmissionController {
 
             Submit submit = submitMapper.selectById(submitId);
             if (submit == null) return;
-            submit.setVideoUrl("/video/get_processed_video?homework_id=" + homeworkId + "&student_id=" + studentId + "&download=false");
+            submit.setVideoUrl("/video/get_processed_video?homework_id=" + homeworkId + "&student_id=" + studentId + "&download=true");
             submit.setScore(score);
             submit.setAiFeedback("AI分析完成：共完成" + totalCount + "次，正确" + correctCount + "次，错误" + incorrectCount + "次。");
             submitMapper.updateById(submit);
