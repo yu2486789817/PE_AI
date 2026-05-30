@@ -196,6 +196,10 @@ class AIGym(BaseSolution):
 
             # 只处理第一个检测到的人物（单人模式）
             k = tracks.keypoints.data[0]
+            # 关键点张量可能在 GPU 上，统一搬到 CPU，避免下游 numpy 转换报错
+            # (TypeError: can't convert cuda:0 device type tensor to numpy)
+            if hasattr(k, "cpu"):
+                k = k.cpu()
 
             # 计算关键点角度
             try:
