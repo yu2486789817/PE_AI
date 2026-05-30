@@ -522,11 +522,16 @@ async def process_and_save_video(
         homework_id: str = Query(..., description="作业ID"),
         student_id: str = Query(..., description="学生ID"),
         pose_type: str = Query("pushup", description="动作类型"),
+        async_mode: bool = Query(False, description="为 true 时立即 202 返回并在后台跑完处理"),
         file: UploadFile = File(..., description="上传的视频文件")
 ):
-    """流式处理视频并将处理后的视频保存到 homework/homework_id/student_id 目录下"""
-    start_time = time.time()
+    """流式处理视频并将处理后的视频保存到 homework/homework_id/student_id 目录下。
 
+    - async_mode=False（默认）：返回 SSE 流，供前端实时渲染处理帧。
+    - async_mode=True：把生成器塞进后台 task 跑完，立即返回 202。
+      用于 PE-AI-Backend 转发场景——后端不消费 SSE 内容，只通过
+      /query_records 拿结果，避免 Render→cloudflared 长连接中途超时。
+    """
     # 读取上传的文件内容
     file_content = await file.read()
     logger.info(f"视频文件读取完成，大小: {len(file_content)} 字节")
@@ -536,9 +541,34 @@ async def process_and_save_video(
     save_path = os.path.join(save_dir, "processed_video.mp4")
 
     # 添加日志信息
-    logger.info(f"当前工作目录: {os.getcwd()}")
     logger.info(f"保存目录: {save_dir}")
     logger.info(f"完整路径: {os.path.abspath(save_path)}")
+
+    if async_mode:
+        async def _drain_generator():
+            try:
+                async for _ in stream_process_video_endpoint(
+                        file_content,
+                        pose_type,
+                        save_path=save_path,
+                        homework_id=homework_id,
+                        student_id=student_id):
+                    pass
+            except Exception:
+                logger.error("后台处理任务异常")
+                logger.error(traceback.format_exc())
+
+        asyncio.create_task(_drain_generator())
+        return Response(
+            status_code=202,
+            content=json.dumps({
+                "message": "accepted",
+                "homework_id": homework_id,
+                "student_id": student_id,
+                "pose_type": pose_type,
+            }),
+            media_type="application/json",
+        )
 
     # 使用流式处理并保存
     return SSEStreamingResponse(

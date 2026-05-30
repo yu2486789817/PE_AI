@@ -160,8 +160,12 @@ public class HomeworkSubmissionController {
 
     private void processInBackground(Integer submitId, Integer homeworkId, String studentId, String poseType, Path videoPath) {
         try {
-            callYoloProcess(homeworkId, studentId, poseType, videoPath);
-            JsonNode stats = queryYoloStats(homeworkId, studentId, poseType);
+            // 1) 触发 YOLO 处理（不等 SSE 流读完，避免被 Render/隧道的长连接超时打断）。
+            //    YOLO 内部异步处理后会把结果写进自己的 SQLite，下面通过轮询 /query_records 拿到结果。
+            triggerYoloProcess(homeworkId, studentId, poseType, videoPath);
+
+            // 2) 轮询 YOLO 统计结果，最多等待 ~5 分钟。
+            JsonNode stats = pollYoloStats(homeworkId, studentId, poseType);
 
             int correctCount = stats.path("correct_count").asInt(0);
             int totalCount = stats.path("total_count").asInt(0);
@@ -184,20 +188,48 @@ public class HomeworkSubmissionController {
         }
     }
 
-    private void callYoloProcess(Integer homeworkId, String studentId, String poseType, Path videoPath) throws Exception {
+    /**
+     * 把视频 POST 给 YOLO 触发处理，不等 SSE 流读完。
+     * 通过 async_mode=true 让 YOLO 立即 202 返回，把生成器塞到自己的后台任务里跑完。
+     * 结果会写进 YOLO 的 SQLite，下面通过轮询 /query_records 拿到。
+     */
+    private void triggerYoloProcess(Integer homeworkId, String studentId, String poseType, Path videoPath) throws Exception {
         String boundary = "----pe-ai-" + UUID.randomUUID();
         byte[] body = multipartBody(boundary, videoPath);
         String url = aiBaseUrl + "/process_and_save_video?homework_id=" + encode(homeworkId.toString())
                 + "&student_id=" + encode(studentId)
-                + "&pose_type=" + encode(poseType);
+                + "&pose_type=" + encode(poseType)
+                + "&async_mode=true";
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .timeout(java.time.Duration.ofSeconds(120))
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("Yolo process failed: " + response.statusCode());
         }
+    }
+
+    /**
+     * 轮询 /query_records 直到 YOLO 写出非空记录，最多等待 ~5 分钟。
+     */
+    private JsonNode pollYoloStats(Integer homeworkId, String studentId, String poseType) throws Exception {
+        long deadline = System.currentTimeMillis() + 5 * 60 * 1000L;
+        long intervalMs = 3000L;
+        Exception lastException = null;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                JsonNode stats = queryYoloStats(homeworkId, studentId, poseType);
+                if (stats != null && stats.has("total_count")) {
+                    return stats;
+                }
+            } catch (Exception e) {
+                lastException = e;
+            }
+            Thread.sleep(intervalMs);
+        }
+        throw new IOException("Yolo poll timeout (5 min)", lastException);
     }
 
     private JsonNode queryYoloStats(Integer homeworkId, String studentId, String poseType) throws Exception {
