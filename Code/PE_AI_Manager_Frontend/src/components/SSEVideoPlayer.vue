@@ -62,10 +62,18 @@ const props = defineProps({
 
 const emit = defineEmits(['playback-started', 'playback-stopped', 'playback-completed', 'playback-error'])
 
-// 直链视频：http(s) 开头且不是老的 SSE 帧流端点。命中则用原生 <video> 播放。
+// 仅当 URL 指向 SSE 帧流端点时才用 EventSource 逐帧渲染：
+//   - get_processed_video 默认 download=false，返回 text/event-stream（SSE 帧流）
+//   - get_processed_video?download=true 返回 video/mp4，属于可直接播放的直链
+//   - stream_process_video 也是 SSE 帧流
+// 其余（Supabase https 直链、download=true 代理直链）一律用原生 <video> 播放。
 const isDirectVideo = computed(() => {
   const url = props.streamUrl || ''
-  return /^https?:\/\//i.test(url) && !url.includes('get_processed_video')
+  if (!url) return false
+  const isSseStream =
+    (url.includes('get_processed_video') && !/[?&]download=true\b/i.test(url)) ||
+    url.includes('stream_process_video')
+  return !isSseStream
 })
 
 const canvasRef = ref(null)

@@ -124,13 +124,14 @@
               >
                 生成更详细的AI分析报告
               </button>
-              <button
+              <!-- 删除按钮暂时隐藏，YOLO 后端按 homework_id 整目录删除会误删他人视频 -->
+              <!-- <button
                 v-if="isLatestSubmission(index) && submission.content_url"
                 @click="deleteVideo(submission)"
                 class="px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg"
               >
                 删除视频
-              </button>
+              </button> -->
             </div>
           </div>
         </div>
@@ -384,7 +385,7 @@ const deleteVideo = async (submission) => {
 
   try {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/video'
-    const url = `${baseUrl}/delete_homework?homework_id=${encodeURIComponent(submission.id)}`
+    const url = `${baseUrl}/delete_homework?homework_id=${encodeURIComponent(assignmentId)}`
 
     const response = await fetch(url, {
       method: 'DELETE'

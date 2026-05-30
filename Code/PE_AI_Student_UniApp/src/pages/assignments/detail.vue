@@ -38,10 +38,13 @@
 			<view class="upload-box">
 				<text class="upload-title">上传作业视频</text>
 				<text class="upload-hint">相册/拍摄支持 60 秒以内；长视频请先发到文件传输助手再选择</text>
-				<button class="choose-btn" @click="chooseVideo" :disabled="assignment.statusClass === 'ended'">
+				<view class="submitted-tip" v-if="hasSubmitted">
+					<text class="submitted-tip-text">本次作业已提交，不可重复提交。</text>
+				</view>
+				<button class="choose-btn" @click="chooseVideo" :disabled="hasSubmitted || assignment.statusClass === 'ended'">
 					<text class="choose-btn-text">选择短视频</text>
 				</button>
-				<button class="file-btn" @click="chooseMessageVideo" :disabled="assignment.statusClass === 'ended'">
+				<button class="file-btn" @click="chooseMessageVideo" :disabled="hasSubmitted || assignment.statusClass === 'ended'">
 					<text class="choose-btn-text">选择长视频文件</text>
 				</button>
 				<text class="video-error" v-if="videoError">{{ videoError }}</text>
@@ -58,8 +61,8 @@
 					<view class="progress-bar"><view class="progress-fill" :style="{ width: uploadProgress + '%' }"></view></view>
 				</view>
 
-				<button class="submit-btn" :disabled="!selectedFile || isUploading" @click="submitAssignment">
-					<text class="submit-btn-text">{{ isUploading ? '上传中...' : '提交作业' }}</text>
+				<button class="submit-btn" :disabled="hasSubmitted || !selectedFile || isUploading" @click="submitAssignment">
+					<text class="submit-btn-text">{{ hasSubmitted ? '已提交' : (isUploading ? '上传中...' : '提交作业') }}</text>
 				</button>
 			</view>
 
@@ -85,6 +88,7 @@ const assignmentId = ref('');
 const courseId = ref('');
 const processingText = ref('');
 const videoError = ref('');
+const hasSubmitted = ref(false);
 
 onMounted(() => {
 	const pages = getCurrentPages();
@@ -125,6 +129,7 @@ const loadAssignment = async () => {
 					if (!invalidValues.includes(submitData)) {
 						statusText = '已完成';
 						statusClass = 'active';
+						hasSubmitted.value = true;
 					} else if (deadline && new Date(deadline) < new Date()) {
 						statusText = '已截止';
 						statusClass = 'ended';
@@ -271,6 +276,7 @@ const submitAssignment = async () => {
 		uploadProgress.value = 100;
 		uni.showToast({ title: '提交成功，AI后台分析中' });
 		selectedFile.value = null;
+		hasSubmitted.value = true;
 		if (assignment.value) {
 			assignment.value.statusText = '已提交';
 			assignment.value.statusClass = 'active';
@@ -527,7 +533,23 @@ const goToHistory = () => {
 	margin-bottom: 14rpx;
 }
 
+.submitted-tip {
+	background: rgba(255, 152, 0, 0.1);
+	border: 1rpx solid rgba(255, 152, 0, 0.25);
+	border-radius: 12rpx;
+	padding: 16rpx 18rpx;
+	margin-bottom: 14rpx;
+}
+
+.submitted-tip-text {
+	font-size: 23rpx;
+	font-weight: 600;
+	color: #e08a1a;
+	line-height: 1.5;
+}
+
 .choose-btn,
+.file-btn,
 .submit-btn,
 .history-btn {
 	height: 82rpx;

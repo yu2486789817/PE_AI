@@ -22,8 +22,7 @@
 
 					<view class="video-section" v-if="isLatest(idx) && item.content_url">
 						<text class="feedback-label">AI 分析视频</text>
-						<video :src="item.content_url" class="video-player" controls object-fit="contain"></video>
-						<button class="mini-btn" @click="openVideoPlayer(item)">全屏播放</button>
+						<text class="video-hint">AI 处理后的视频请到网页端查看</text>
 					</view>
 
 					<view class="feedback-section" v-if="item.AI_feedback">
@@ -184,13 +183,6 @@ const loadSubmissions = async () => {
 	} finally {
 		loading.value = false;
 	}
-};
-
-const openVideoPlayer = (item) => {
-	if (!item?.content_url) return;
-	const url = encodeURIComponent(item.content_url);
-	const title = encodeURIComponent(item.title || 'AI分析视频');
-	uni.navigateTo({ url: `/pages/course/videoPlayer?url=${url}&title=${title}` });
 };
 
 const openReportDialog = (item) => {
@@ -403,22 +395,12 @@ const formatDate = (s) => {
 	margin-bottom: 12rpx;
 }
 
-.video-player {
-	width: 100%;
-	height: 360rpx;
-	border-radius: 14rpx;
-	background: #000;
-}
-
-.mini-btn {
-	margin-top: 10rpx;
-	height: 62rpx;
-	line-height: 62rpx;
-	border-radius: 999rpx;
+.video-hint {
+	display: block;
+	margin-top: 6rpx;
 	font-size: 23rpx;
-	font-weight: 600;
-	background: #eef2ff;
-	color: #33539a;
+	line-height: 1.6;
+	color: #6d7a98;
 }
 
 .feedback-section {
