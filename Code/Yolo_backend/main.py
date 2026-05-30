@@ -6,6 +6,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.responses import StreamingResponse, Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
+import requests
 from ultralytics import YOLO
 from ai_gym import AIGym
 import tempfile
@@ -38,6 +39,42 @@ app = FastAPI(title="AI Gym API", description="健身动作识别后端API")
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ================= Supabase Storage =================
+# 处理后的视频要上传到 Supabase 公共 bucket，让前端绕开 cloudflared 隧道直接播放。
+# 配置缺失时静默跳过，仅返回本地路径（保持原有行为）。
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "teaching-videos").strip()
+
+
+def _supabase_enabled() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_KEY and SUPABASE_BUCKET)
+
+
+def upload_to_supabase(local_path: str, object_name: str) -> Optional[str]:
+    """把本地文件上传到 Supabase Storage，返回公共 URL；失败返回 None。"""
+    if not _supabase_enabled():
+        return None
+    try:
+        endpoint = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{object_name}"
+        with open(local_path, "rb") as f:
+            resp = requests.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "x-upsert": "true",
+                    "Content-Type": "video/mp4",
+                },
+                data=f,
+                timeout=120,
+            )
+        if 200 <= resp.status_code < 300:
+            return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_name}"
+        logger.error(f"Supabase upload failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        logger.error(f"Supabase upload exception: {e}")
+    return None
 
 # 存储临时目录，以便稍后清理（必须在 shutdown_event 之前定义）
 temp_dirs = {}  # 存储临时目录信息，包括创建时间和路径
@@ -341,6 +378,14 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
             logger.info(f"保存的文件是否存在: {os.path.exists(save_path)}")
             logger.info(f"保存的文件大小: {os.path.getsize(save_path) if os.path.exists(save_path) else 0} 字节")
 
+        # 处理后视频上传到 Supabase（前端可直连播放，绕开 cloudflared 隧道）
+        processed_public_url = None
+        if save_path and homework_id and student_id and _supabase_enabled():
+            object_name = f"homework-processed/{homework_id}/{student_id}.mp4"
+            processed_public_url = upload_to_supabase(save_path, object_name)
+            if processed_public_url:
+                logger.info(f"处理后视频已上传 Supabase: {processed_public_url}")
+
         # 读取处理后的视频文件
         with open(output_path, "rb") as video_file:
             processed_video = video_file.read()
@@ -407,6 +452,8 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
                             "duration": video_duration
                         }
                     }
+                    if processed_public_url:
+                        feedback_details["processed_video_url"] = processed_public_url
 
                     # 更新max_count为tracker的总计数
                     max_count = total_count_from_tracker
@@ -422,6 +469,8 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
                             "incorrect_count": 0
                         }
                     }
+                    if processed_public_url:
+                        feedback_details["processed_video_url"] = processed_public_url
 
                 # 插入数据库 - 关键修改：使用tracker返回的计数
                 insert_exercise_feedback(

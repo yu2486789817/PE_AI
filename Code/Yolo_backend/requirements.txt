@@ -15,6 +15,10 @@ ultralytics>=8.0.0
 opencv-python>=4.8.0
 numpy>=1.24.0
 
+# ================= HTTP Client =================
+# 用于把处理后的视频上传到 Supabase Storage
+requests>=2.31.0
+
 # ================= Optional =================
 # For video encoding/decoding optimization
 # ffmpeg-python>=0.2.0

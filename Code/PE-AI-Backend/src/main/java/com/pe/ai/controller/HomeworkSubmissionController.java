@@ -175,7 +175,14 @@ public class HomeworkSubmissionController {
 
             Submit submit = submitMapper.selectById(submitId);
             if (submit == null) return;
-            submit.setVideoUrl("/video/get_processed_video?homework_id=" + homeworkId + "&student_id=" + studentId + "&download=true");
+            // 优先使用 YOLO 上传到 Supabase 的公共 URL（前端直连播放）；
+            // 兜底回退到通过 Render→cloudflared 代理的老路径。
+            String processedVideoUrl = extractProcessedVideoUrl(stats);
+            if (processedVideoUrl == null || processedVideoUrl.isBlank()) {
+                processedVideoUrl = "/video/get_processed_video?homework_id=" + homeworkId
+                        + "&student_id=" + studentId + "&download=true";
+            }
+            submit.setVideoUrl(processedVideoUrl);
             submit.setScore(score);
             submit.setAiFeedback("AI分析完成：共完成" + totalCount + "次，正确" + correctCount + "次，错误" + incorrectCount + "次。");
             submitMapper.updateById(submit);
@@ -185,6 +192,19 @@ public class HomeworkSubmissionController {
                 submit.setAiFeedback("AI分析失败，已保留原始提交视频。");
                 submitMapper.updateById(submit);
             }
+        }
+    }
+
+    /** 从 /query_records 返回的记录里抽取 feedback_json.processed_video_url。 */
+    private String extractProcessedVideoUrl(JsonNode stats) {
+        JsonNode raw = stats.path("feedback_json");
+        if (raw.isMissingNode() || raw.isNull()) return null;
+        try {
+            JsonNode feedback = raw.isTextual() ? objectMapper.readTree(raw.asText()) : raw;
+            String url = feedback.path("processed_video_url").asText("");
+            return url.isBlank() ? null : url;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 自动加载同目录下的密钥文件（Supabase 等），该文件被 .gitignore 忽略不入库。
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/secrets.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/secrets.env"
+  set +a
+fi
+
 PROJECT_DIR="${PROJECT_DIR:-/root/autodl-tmp/PE_AI}"
 LOG_DIR="${LOG_DIR:-$PROJECT_DIR/logs}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-peai}"
@@ -39,6 +48,9 @@ pkill -f "Code/Yolo_backend/start.py" >/dev/null 2>&1 || true
 
 echo "Starting Yolo_backend on 0.0.0.0:8000..."
 nohup env YOLO_HOST=0.0.0.0 YOLO_PORT=8000 \
+  SUPABASE_URL="${SUPABASE_URL:-}" \
+  SUPABASE_SERVICE_KEY="${SUPABASE_SERVICE_KEY:-}" \
+  SUPABASE_BUCKET="${SUPABASE_BUCKET:-teaching-videos}" \
   python Code/Yolo_backend/start.py > "$LOG_DIR/yolo.log" 2>&1 &
 
 echo "Starting AIChat on 0.0.0.0:5000..."

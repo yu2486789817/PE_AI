@@ -102,6 +102,10 @@ data/
 *.swp
 *~
 
+# Deploy secrets（含 Supabase service_role key，严禁提交）
+Code/deploy/autodl/secrets.env
+**/secrets.env
+
 # Local course/report artifacts
 /2026_Slides Lesson09-10_Software Cost Estimation V2.pdf
 /6089464.txt
