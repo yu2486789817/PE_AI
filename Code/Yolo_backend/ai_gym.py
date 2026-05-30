@@ -61,7 +61,7 @@ def _find_model_path():
 
 class AIGym(BaseSolution):
     def __init__(self, kpts_to_check, line_thickness=2, pose_type="pushup",
-                 imgsz=640, **kwargs):
+                 **kwargs):
         """
         初始化 AIGym 健身动作识别器。
 
@@ -92,7 +92,6 @@ class AIGym(BaseSolution):
         self.pose_type = pose_type         # 动作类型
         self.annotator = None              # 图像标注器
         self.fps = 30                      # 视频帧率
-        self.imgsz = imgsz                 # YOLO 推理输入分辨率
         self.result_data = {}              # 存储完整的处理结果数据
 
         # 调用父类初始化
@@ -177,8 +176,7 @@ class AIGym(BaseSolution):
 
             # 调用 YOLO 模型进行姿态跟踪
             # persist=True 启用跟踪持久化，提高跨帧一致性
-            # imgsz 控制推理分辨率，CPU 上调小可显著提速
-            tracks = self.model.track(source=frame_copy, persist=True, classes=self.CFG["classes"], imgsz=self.imgsz)[0]
+            tracks = self.model.track(source=frame_copy, persist=True, classes=self.CFG["classes"])[0]
             logger.debug("YOLO模型跟踪完成")
         except Exception as e:
             error_msg = f"模型跟踪错误: {e}"

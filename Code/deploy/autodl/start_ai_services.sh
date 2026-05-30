@@ -23,7 +23,9 @@ fi
 
 if ! ollama list | awk '{print $1}' | grep -qx "$OLLAMA_MODEL"; then
   echo "Importing Ollama model..."
-  (cd Code/AIChat/ollama && ollama create "$OLLAMA_MODEL" -f Modelfile)
+  # 使用与 gguf 同目录、路径正确的 Modelfile（FROM ./xxx.gguf）
+  # 模型目录：Code/AIChat/models/qwen2.5-pe-sports.q4_k_m/（含 gguf + Modelfile）
+  (cd Code/AIChat/models/qwen2.5-pe-sports.q4_k_m && ollama create "$OLLAMA_MODEL" -f Modelfile)
 fi
 
 python -m venv .venv-ai
