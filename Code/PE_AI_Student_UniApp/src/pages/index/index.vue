@@ -52,8 +52,8 @@
 					<text class="dialog-title">加入课程</text>
 					<input class="input-base" v-model="courseCode" placeholder="请输入 6 位课程码" maxlength="6" />
 					<view class="dialog-btns">
-						<button class="btn-outline" @click="showJoinDialog = false">取消</button>
-						<button class="btn-primary" @click="handleJoin">加入</button>
+						<button class="btn-outline" style="color:#2b3851" @click="showJoinDialog = false">取消</button>
+						<button class="btn-primary" style="color:#fff" @click="handleJoin">加入</button>
 					</view>
 				</view>
 			</view>

@@ -168,7 +168,7 @@ public class LegacyCourseController {
         Course course = courseMapper.selectOne(
                 new LambdaQueryWrapper<Course>().eq(Course::getCode, courseCode));
         if (course == null) return Result.error(-21, "Course not found");
-        if (course.getIsActive() != 1) return Result.error(-22, "Course not active");
+        if (course.getIsActive() != 1) return Result.error(-22, "课程未发布，暂不能加入");
         Result<Void> archivedCheck = rejectIfCourseArchived(course);
         if (archivedCheck != null) return archivedCheck;
 
@@ -873,6 +873,7 @@ public class LegacyCourseController {
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        if (course.getIsActive() != 1) return Result.error(-22, "课程未发布，不允许发布作业");
         Result<Void> archivedCheck = rejectIfCourseArchived(course);
         if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
 
