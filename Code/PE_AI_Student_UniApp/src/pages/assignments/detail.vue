@@ -17,7 +17,7 @@
 				</view>
 				<view class="meta-item">
 					<text class="meta-label">动作类型</text>
-					<text class="meta-val">{{ aiType || '加载中...' }}</text>
+					<text class="meta-val">{{ aiTypeLabel || '加载中...' }}</text>
 				</view>
 				<view class="meta-item">
 					<text class="meta-label">要求数量</text>
@@ -73,7 +73,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import request from '@/services/request';
 import PageLayout from '@/components/PageLayout.vue';
 
@@ -81,6 +81,13 @@ const assignment = ref(null);
 const loading = ref(true);
 const aiType = ref(null);
 const requiredCount = ref(null);
+
+const aiTypeMap = {
+  squat: '深蹲',
+  pushup: '俯卧撑',
+  deadlift: '硬拉'
+};
+const aiTypeLabel = computed(() => aiTypeMap[aiType.value] || aiType.value);
 const selectedFile = ref(null);
 const isUploading = ref(false);
 const uploadProgress = ref(0);

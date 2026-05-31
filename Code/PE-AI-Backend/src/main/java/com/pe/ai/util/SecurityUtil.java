@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 public class SecurityUtil {
@@ -35,7 +36,7 @@ public class SecurityUtil {
      * token = timestamp(14) + SHA256(timestamp + id + password)
      */
     public static String generateToken(String id, String password) {
-        String timestamp = LocalDateTime.now().format(JWT_TIME_FMT);
+        String timestamp = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).format(JWT_TIME_FMT);
         String raw = timestamp + id + password;
         String hash = computeSHA256(raw);
         return timestamp + hash;
@@ -67,7 +68,7 @@ public class SecurityUtil {
     public static boolean isTokenExpired(String jwtTime) {
         try {
             LocalDateTime tokenTime = LocalDateTime.parse(jwtTime, JWT_TIME_FMT);
-            return LocalDateTime.now().isAfter(tokenTime.plusMinutes(JWT_EXPIRE_MINUTES));
+            return LocalDateTime.now(ZoneId.of("Asia/Shanghai")).isAfter(tokenTime.plusMinutes(JWT_EXPIRE_MINUTES));
         } catch (Exception e) {
             return true;
         }

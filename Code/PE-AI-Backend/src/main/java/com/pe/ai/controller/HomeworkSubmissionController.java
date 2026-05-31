@@ -43,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -135,7 +136,7 @@ public class HomeworkSubmissionController {
         submit.setHomeworkId(homework.getId());
         submit.setVideoUrl(originalVideoUrl);
         submit.setAiFeedback("AI分析排队中");
-        submit.setCreateTime(LocalDateTime.now());
+        submit.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         submitMapper.insert(submit);
 
         String resolvedPoseType = resolvePoseType(homework.getId(), poseType);

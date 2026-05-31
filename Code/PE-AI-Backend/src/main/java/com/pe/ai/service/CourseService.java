@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -60,7 +61,7 @@ public class CourseService {
         course.setCode(code);
         course.setSemester(semester);
         course.setIsActive(1);
-        course.setCreatedTime(LocalDateTime.now());
+        course.setCreatedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         courseMapper.insert(course);
         return Result.success();
     }
@@ -107,7 +108,7 @@ public class CourseService {
         hw.setTitle(title);
         hw.setDescription(description);
         hw.setDeadline(deadline);
-        hw.setCreateTime(LocalDateTime.now());
+        hw.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         homeworkMapper.insert(hw);
         return Result.success();
     }
@@ -145,7 +146,7 @@ public class CourseService {
         submit.setHomeworkId(homeworkId);
         submit.setStudentId(studentId);
         submit.setVideoUrl(videoUrl);
-        submit.setCreateTime(LocalDateTime.now());
+        submit.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         submitMapper.insert(submit);
         return Result.success();
     }

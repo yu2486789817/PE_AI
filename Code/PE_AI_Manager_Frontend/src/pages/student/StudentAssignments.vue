@@ -94,7 +94,7 @@
               <div class="text-sm text-gray-400">动作类型</div>
               <div>
                 <span class="text-lg font-medium text-gray-700">
-                  {{ aiType || '加载中...' }}
+                  {{ aiTypeLabel || '加载中...' }}
                 </span>
               </div>
             </div>
@@ -327,6 +327,13 @@ const finalScore = ref(null)
 const aiType = ref(null)
 const requiredCount = ref(null)
 
+const aiTypeMap = {
+  squat: '深蹲',
+  pushup: '俯卧撑',
+  deadlift: '硬拉'
+}
+const aiTypeLabel = computed(() => aiTypeMap[aiType.value] || aiType.value)
+
 // SSE流播放相关
 const isPlayingProcessedVideo = ref(false)
 const processedVideoEventSource = ref(null)
@@ -476,6 +483,13 @@ const triggerFileInput = () => {
 const handleFileChange = (event) => {
   const file = event.target.files[0]
   if (file) {
+    // 校验文件后缀，仅允许 MP4
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (ext !== 'mp4') {
+      alert('仅支持 MP4 格式的视频文件，请重新选择')
+      event.target.value = ''
+      return
+    }
     selectedFile.value = file
 
     // 预览视频

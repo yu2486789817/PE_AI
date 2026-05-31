@@ -81,6 +81,7 @@
             清空
           </button>
           <button @click="generateWeeklyReport"
+                  v-if="userRole === 'student'"
                   :disabled="generatingReport"
                   class="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition-all flex items-center gap-2 kinetic-button disabled:opacity-50 disabled:pointer-events-none">
             <FileTextIcon v-if="!generatingReport" class="w-3.5 h-3.5" />
@@ -241,6 +242,8 @@ const getUserInfo = () => {
     role: user.role || 'student'
   }
 }
+
+const userRole = computed(() => getUserInfo().role)
 
 // 加载会话列表
 const loadSessions = async () => {

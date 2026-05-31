@@ -74,7 +74,7 @@ public class TeachingVideoController {
             return ResponseEntity.badRequest().body(error("File too large!"));
         }
 
-        String filename = FILENAME_TIME.format(LocalDateTime.now()) + "_"
+        String filename = FILENAME_TIME.format(LocalDateTime.now(ZoneId.of("Asia/Shanghai"))) + "_"
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "." + extension;
 
         String url;

@@ -300,6 +300,11 @@ const submitForm = async () => {
     return
   }
 
+  if (new Date(newAssignment.value.deadline) <= new Date()) {
+    alert('截止时间必须在当前时间之后')
+    return
+  }
+
   try {
     const addResp = await apiClient.post('/Homework/new_homework', {
       First: teacherId,

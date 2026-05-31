@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
@@ -36,7 +37,7 @@ public class UserService {
             return Result.error(-23, "Wrong password");
         }
         // Update login time
-        teacher.setLoginTime(LocalDateTime.now());
+        teacher.setLoginTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         teacherMapper.updateById(teacher);
 
         String token = SecurityUtil.generateToken(id, teacher.getPassword());
@@ -51,7 +52,7 @@ public class UserService {
         if (!student.getPassword().equals(password)) {
             return Result.error(-23, "Wrong password");
         }
-        student.setLoginTime(LocalDateTime.now());
+        student.setLoginTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         studentMapper.updateById(student);
 
         String token = SecurityUtil.generateToken(id, student.getPassword());
@@ -131,7 +132,7 @@ public class UserService {
         teacher.setTitle(title);
         teacher.setCollege(college);
         teacher.setDepartment(department);
-        teacher.setCreatedTime(LocalDateTime.now());
+        teacher.setCreatedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         teacherMapper.insert(teacher);
         return Result.success();
     }
@@ -155,7 +156,7 @@ public class UserService {
         student.setMajor(major);
         student.setCollege(college);
         student.setDepartment(department);
-        student.setCreatedTime(LocalDateTime.now());
+        student.setCreatedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         studentMapper.insert(student);
         return Result.success();
     }

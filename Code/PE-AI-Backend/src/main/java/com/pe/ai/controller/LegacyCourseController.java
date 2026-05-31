@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -167,6 +168,7 @@ public class LegacyCourseController {
         Course course = courseMapper.selectOne(
                 new LambdaQueryWrapper<Course>().eq(Course::getCode, courseCode));
         if (course == null) return Result.error(-21, "Course not found");
+        if (course.getIsActive() != 1) return Result.error(-22, "Course not active");
         Result<Void> archivedCheck = rejectIfCourseArchived(course);
         if (archivedCheck != null) return archivedCheck;
 
@@ -180,7 +182,7 @@ public class LegacyCourseController {
         StudentCourse sc = new StudentCourse();
         sc.setStudentId(studentId);
         sc.setCourseId(course.getId());
-        sc.setJoinedTime(LocalDateTime.now());
+        sc.setJoinedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         studentCourseMapper.insert(sc);
         return Result.success();
     }
@@ -241,7 +243,7 @@ public class LegacyCourseController {
             StudentCourse sc = new StudentCourse();
             sc.setStudentId(studentId);
             sc.setCourseId(courseId);
-            sc.setJoinedTime(LocalDateTime.now());
+            sc.setJoinedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
             studentCourseMapper.insert(sc);
             added.add(studentId);
         }
@@ -343,7 +345,7 @@ public class LegacyCourseController {
             String semester = getParam(body, "fifth") != null ? getParam(body, "fifth") : getParam(body, "sixth");
             course.setSemester(semester != null ? Integer.parseInt(semester.trim()) : 1);
             course.setIsActive(1);
-            course.setCreatedTime(LocalDateTime.now());
+            course.setCreatedTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
             courseMapper.insert(course);
 
             // 前端 expects an array/list where index 1 is the generated invitation code
@@ -371,6 +373,9 @@ public class LegacyCourseController {
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
 
         courseMapper.deleteById(courseId);
         return Result.success();
@@ -437,6 +442,9 @@ public class LegacyCourseController {
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
 
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
         String name = getParam(body, "fourth");
         String semesterStr = getParam(body, "fifth");
 
@@ -468,6 +476,9 @@ public class LegacyCourseController {
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
 
         String info = getParam(body, "fourth");
         course.setInfo(info);
@@ -779,7 +790,7 @@ public class LegacyCourseController {
         submit.setStudentId(studentId);
         submit.setHomeworkId(homework.getId());
         submit.setVideoUrl(videoUrl);
-        submit.setCreateTime(LocalDateTime.now());
+        submit.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         submitMapper.insert(submit);
         return Result.success(submit.getId());
     }
@@ -862,6 +873,8 @@ public class LegacyCourseController {
         Course course = courseMapper.selectById(courseId);
         if (course == null) return Result.error(-21, "Course not found");
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
+        Result<Void> archivedCheck = rejectIfCourseArchived(course);
+        if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
 
         Homework hw = new Homework();
         hw.setCourseId(courseId);
@@ -881,8 +894,11 @@ public class LegacyCourseController {
             deadlineStr = getParam(body, "sixth");
         }
         hw.setDeadline(parseDateTime(deadlineStr));
+        if (hw.getDeadline() != null && !hw.getDeadline().isAfter(LocalDateTime.now(ZoneId.of("Asia/Shanghai")))) {
+            return Result.error(-10, "Deadline must be in the future");
+        }
         hw.setDescription(description);
-        hw.setCreateTime(LocalDateTime.now());
+        hw.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         homeworkMapper.insert(hw);
         return Result.success(String.valueOf(hw.getId()));
     }
@@ -935,6 +951,11 @@ public class LegacyCourseController {
         if (!teacherId.equals(course.getTeacherId())) return Result.error(-23, "JWT Error");
         Result<Void> archivedCheck = rejectIfCourseArchived(course);
         if (archivedCheck != null) return Result.error(archivedCheck.getCode(), archivedCheck.getMessage());
+
+        Set<String> allowedTypes = Set.of("squat", "pushup", "deadlift");
+        if (!allowedTypes.contains(type)) {
+            return Result.error(-10, "Unsupported pose type: " + type + ", allowed: squat/pushup/deadlift");
+        }
 
         AiType ai = new AiType();
         ai.setHomeworkId(Integer.parseInt(hwIdStr.trim()));
@@ -1217,7 +1238,7 @@ public class LegacyCourseController {
         c.setDescription(getParam(body, "fifth"));
         if (c.getDescription() == null) c.setDescription(getParam(body, "fourth"));
 
-        c.setCreateTime(LocalDateTime.now());
+        c.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         courseClassMapper.insert(c);
         return Result.success();
     }

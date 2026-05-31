@@ -25,6 +25,7 @@
 				</view>
 			</view>
 
+			<!-- #ifndef MP -->
 			<view class="action-strip">
 				<button class="strip-btn" :disabled="reportLoading" @click="handleGenerateWeeklyReport">
 					<text class="strip-btn-text">{{ reportLoading ? '生成中...' : '智能周报' }}</text>
@@ -32,7 +33,9 @@
 				<button class="strip-btn" :disabled="exporting || !currentSessionId" @click="handleExportSession">
 					<text class="strip-btn-text">{{ exporting ? '导出中...' : '导出MD' }}</text>
 				</button>
+			
 			</view>
+			<!-- #endif -->
 
 			<scroll-view class="message-list" scroll-y :scroll-top="scrollTop" :scroll-with-animation="true">
 				<view class="message-wrapper" v-for="(msg, index) in messages" :key="index" :class="msg.role">

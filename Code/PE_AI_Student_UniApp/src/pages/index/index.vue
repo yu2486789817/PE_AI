@@ -16,16 +16,18 @@
 				</view>
 			</InfoCard>
 
+			<!-- #ifndef MP -->
 			<InfoCard title="个性化健康报告" class="mt-3">
 				<view class="report-entry" @click="openHealthReportDialog">
 					<text class="report-entry-title">基于当前情况生成长期训练建议</text>
 					<text class="report-entry-arrow">›</text>
 				</view>
 			</InfoCard>
+			<!-- #endif -->
 
 			<view class="section-header mt-4">
 				<text class="section-title">我的课程</text>
-				<button class="btn-outline" @click="showJoinDialog = true">加入课程</button>
+				<button class="btn-outline" style="color:#2b3851" @click="showJoinDialog = true">加入课程</button>
 			</view>
 
 			<view class="loading" v-if="loadingCourses"><text class="loading-text">正在加载课程...</text></view>
