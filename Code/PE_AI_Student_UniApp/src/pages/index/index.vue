@@ -27,6 +27,10 @@
 
 			<view class="section-header mt-4">
 				<text class="section-title">我的课程</text>
+				<view class="ended-toggle-wrap">
+					<text class="ended-toggle-text">显示已结束</text>
+					<switch :checked="showEnded" @change="onShowEndedChange" color="#236df2" style="transform: scale(0.7);" />
+				</view>
 				<button class="btn-outline" style="color:#2b3851" @click="showJoinDialog = true">加入课程</button>
 			</view>
 
@@ -85,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { getStudentCourses, joinCourse } from '@/services/course'
 import request from '@/services/request'
 import PageLayout from '@/components/PageLayout.vue'
@@ -95,7 +99,18 @@ import ListCard from '@/components/ui/ListCard.vue'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import MobileEmptyState from '@/components/ui/MobileEmptyState.vue'
 
-const courses = ref([])
+const allCourses = ref([])
+const showEnded = ref(false)
+const courses = computed(() => {
+	if (showEnded.value) {
+		return allCourses.value
+	}
+	return allCourses.value.filter(c => c.isActive !== '2')
+})
+
+const onShowEndedChange = (e) => {
+	showEnded.value = e.detail.value
+}
 const loadingCourses = ref(false)
 const showJoinDialog = ref(false)
 const courseCode = ref('')
@@ -171,9 +186,9 @@ const fetchCourses = async () => {
 				}
 			})
 		)
-		courses.value = enriched
+		allCourses.value = enriched
 	} else {
-		courses.value = []
+		allCourses.value = []
 	}
 	loadingCourses.value = false
 }
@@ -520,5 +535,16 @@ const goToCourse = (c) => {
 
 .health-actions button {
 	flex: 1;
+}
+
+.ended-toggle-wrap {
+	display: flex;
+	align-items: center;
+	gap: 6rpx;
+}
+
+.ended-toggle-text {
+	font-size: 22rpx;
+	color: var(--color-ink-500);
 }
 </style>
