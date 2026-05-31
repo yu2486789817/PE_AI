@@ -1,4 +1,4 @@
-﻿<script>
+<script>
 export default {
 	onLaunch() {
 		const user = uni.getStorageSync('user')
@@ -12,7 +12,7 @@ export default {
 </script>
 
 <style>
-:root {
+page {
 	--color-primary-500: #236df2;
 	--color-primary-600: #1d5fdd;
 	--color-primary-700: #1a4dac;

@@ -156,6 +156,7 @@ import { useRouter } from 'vue-router'
 import dayjs from 'dayjs';
 import apiClient from '../../services/axios.js'
 import { cacheService } from '../../services/DataCacheService.js'
+import { parseCourseInfo } from '../../utils/legacyParse.js'
 
 const router = useRouter()
 
@@ -222,21 +223,18 @@ const loadCourses = async () => {
         const studentIdStr = studentResp.data.data
         studentCount = studentIdStr ? studentIdStr.split('\t\r').filter(Boolean).length : 0
       }
-
-
-
-    const courseRespData = infoResp.data.data.replace(/(\t\r)+$/g, '');
-    const courseRespDataArray = courseRespData.split(/\t\r/);
+      const c = parseCourseInfo(infoResp.data.data, id)
 
       return {
         id: String(id),
-        name: courseRespDataArray[1].trim(),
-        studentCount: studentCount
+        name: c.name.trim(),
+        studentCount: studentCount,
+        isActive: String(c.isActive || '0')
       }
     })
 
     const results = await Promise.all(promises)
-    courses.value = results.filter(item => item !== null && item.id && item.name)
+    courses.value = results.filter(item => item !== null && item.id && item.name && item.isActive === '1')
 
   } catch (err) {
     console.error(err)

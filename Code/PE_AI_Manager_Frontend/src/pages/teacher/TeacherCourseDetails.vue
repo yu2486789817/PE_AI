@@ -1,11 +1,11 @@
-﻿<template>
+<template>
   <div class="page-shell">
     <div class="page-container">
       <PageHeader :title="course?.name || '课程详情'" subtitle="管理课程信息、作业发布和课程归档。">
         <template #actions>
           <button class="btn-outline" @click="goBack">返回</button>
           <button class="btn-outline" @click="manageStudents">学生管理</button>
-          <button class="btn-primary" :disabled="isArchived" @click="openPublishDialog">发布作业</button>
+          <button class="btn-primary" :disabled="course?.is_active !== '1'" @click="openPublishDialog">发布作业</button>
           <button class="btn-outline" @click="editCourse" :disabled="isArchived">编辑课程</button>
           <button class="btn-danger" @click="toggleArchive">{{ isArchived ? '取消归档' : '归档课程' }}</button>
         </template>
@@ -35,7 +35,7 @@
 
       <SectionCard title="课程作业">
         <template #extra>
-          <button class="btn-primary" :disabled="isArchived" @click="openPublishDialog">新建作业</button>
+          <button class="btn-primary" :disabled="course?.is_active !== '1'" @click="openPublishDialog">新建作业</button>
         </template>
 
         <EmptyState
@@ -166,6 +166,10 @@ const manageStudents = () => {
 }
 
 const openPublishDialog = () => {
+  if (course.value?.is_active === '0') {
+    alert('课程还未发布，不能发布作业')
+    return
+  }
   if (isArchived.value) {
     alert('课程已归档，不能发布作业')
     return
@@ -284,6 +288,10 @@ const fetchCourseDetails = async () => {
 }
 
 const submitForm = async () => {
+  if (course.value?.is_active === '0') {
+    alert('课程还未发布，不能发布作业')
+    return
+  }
   if (isArchived.value) {
     alert('课程已归档，不能发布作业')
     return
