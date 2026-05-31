@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page-shell">
     <div class="page-container">
       <PageHeader title="作业管理" subtitle="按课程、动作类型和状态查看作业统计。" />
@@ -217,7 +217,7 @@ const loadData = async () => {
         let totalScore = 0
         let scoreCount = 0
 
-        if (submitResp.data.success && submitResp.data.data) {
+        if (submitResp.data.success && submitResp.data.data && submitResp.data.data !== 'NULL') {
           const pairs = String(submitResp.data.data).split('\t\r').filter(Boolean)
 
           const detailPromises = pairs.map(async (pair) => {

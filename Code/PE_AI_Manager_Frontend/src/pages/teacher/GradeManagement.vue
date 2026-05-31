@@ -247,7 +247,7 @@ const fetchData = async () => {
       assignmentTitle.value = d[0] || '未知作业'
     }
 
-    if (!finalResp.data.success || !finalResp.data.data) {
+    if (!finalResp.data.success || !finalResp.data.data || finalResp.data.data === 'NULL') {
       studentSubmissions.value = []
       loading.value = false
       return

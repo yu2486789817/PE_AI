@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page-shell">
     <div class="page-container">
       <PageHeader title="数据看板" subtitle="查看课程作业提交、成绩分布和优秀率趋势。">
@@ -185,7 +185,7 @@ const loadData = async () => {
             Fourth: hwId
           })
         )
-        if (!submitResp.data.success || !submitResp.data.data) continue
+        if (!submitResp.data.success || !submitResp.data.data || submitResp.data.data === 'NULL') continue
 
         const pairs = String(submitResp.data.data).split('\t\r').filter(Boolean)
         for (const pair of pairs) {

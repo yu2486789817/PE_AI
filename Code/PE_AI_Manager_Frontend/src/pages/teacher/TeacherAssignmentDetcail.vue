@@ -283,7 +283,7 @@ const fetchDetail = async () => {
     let totalScore = 0
     let scoreCount = 0
 
-    if (submitResp.data.success && submitResp.data.data) {
+    if (submitResp.data.success && submitResp.data.data && submitResp.data.data !== 'NULL') {
       const pairs = submitResp.data.data.split('\t\r').filter(Boolean)
 
       // 使用 Promise.all 并行获取提交详情，并利用缓存
