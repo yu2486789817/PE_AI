@@ -142,86 +142,114 @@ const loadData = async () => {
       })
       .filter(Boolean)
 
-    for (const courseId of courseIds) {
-      const hwResp = await cacheService.fetchWithCache(`course_homework_ids:${courseId}`, () =>
-        apiClient.post('/Homework/get_homework_id_by_course', {
-          First: '1',
-          Second: teacherId,
-          Third: jwt,
-          Fourth: courseId
-        })
-      )
-      if (!hwResp.data.success || !hwResp.data.data) continue
-      const hwIds = parseLegacyIdList(hwResp.data.data)
+    const courseDetailsPromises = courseIds.map(async (courseId) => {
+      const [hwResp, studentResp] = await Promise.all([
+        cacheService.fetchWithCache(`course_homework_ids:${courseId}`, () =>
+          apiClient.post('/Homework/get_homework_id_by_course', {
+            First: '1',
+            Second: teacherId,
+            Third: jwt,
+            Fourth: courseId
+          })
+        ),
+        cacheService.fetchWithCache(`course_student_ids:${courseId}`, () =>
+          apiClient.post('/Course_student/get_student_id_by_course', {
+            First: teacherId,
+            Second: jwt,
+            Third: courseId
+          })
+        )
+      ])
 
-      const studentResp = await cacheService.fetchWithCache(`course_student_ids:${courseId}`, () =>
-        apiClient.post('/Course_student/get_student_id_by_course', {
-          First: teacherId,
-          Second: jwt,
-          Third: courseId
-        })
-      )
       const totalStudents = studentResp.data.success && studentResp.data.data
         ? String(studentResp.data.data).split('\t\r').filter(Boolean).length
         : 0
 
+      const hwIds = (hwResp.data.success && hwResp.data.data)
+        ? parseLegacyIdList(hwResp.data.data)
+        : []
+
+      return { courseId, hwIds, totalStudents }
+    })
+
+    const courseDetails = await Promise.all(courseDetailsPromises)
+
+    const hwPromises = []
+
+    for (const { courseId, hwIds, totalStudents } of courseDetails) {
       for (const hwId of hwIds) {
-        const infoResp = await cacheService.fetchWithCache(`homework_info:${hwId}`, () =>
-          apiClient.post('/Homework/get_info_by_homework_id', { First: courseId, Second: hwId })
-        )
-        if (!infoResp.data.success || !infoResp.data.data) continue
-        const title = parseHomeworkInfo(infoResp.data.data, hwId).title || '未命名作业'
-
-        const aiResp = await cacheService.fetchWithCache(`homework_ai_config:${hwId}`, () =>
-          apiClient.post('/Homework/get_AI_type', { First: hwId })
-        )
-        const rawAiType = aiResp.data?.data ? String(aiResp.data.data).split('\t\r')[0] || 'squat' : 'squat'
-
-        const submitResp = await cacheService.fetchWithCache(`final_submits:${hwId}`, () =>
-          apiClient.post('/Homework/get_final_submit', {
-            First: teacherId,
-            Second: jwt,
-            Third: courseId,
-            Fourth: hwId
-          })
-        )
-        if (!submitResp.data.success || !submitResp.data.data || submitResp.data.data === 'NULL') continue
-
-        const pairs = String(submitResp.data.data).split('\t\r').filter(Boolean)
-        for (const pair of pairs) {
-          const [studentId, submitId] = pair.split('\n')
-          if (submitId === '-1' || submitId === '-2') continue
-
-          const detailResp = await cacheService.fetchWithCache(`submit_detail:${submitId}`, () =>
-            apiClient.post('/Homework/get_submit_info', {
-              First: '1',
-              Second: teacherId,
-              Third: jwt,
-              Fourth: submitId
-            })
-          )
-
-          if (detailResp.data.success && detailResp.data.data) {
-            const detail = String(detailResp.data.data).trim().replace(/\t\r$/g, '').split('\t\r')
-            const score = parseInt(detail[1], 10) || 0
-            const submissionTime = parseDate(detail[4] || '')
-
-            if (submissionTime) {
-              submissions.value.push({
-                courseId,
-                homeworkId: hwId,
-                homeworkTitle: title,
-                aiType: rawAiType,
-                studentId,
-                score,
-                submissionTime,
-                totalStudents
+        hwPromises.push((async () => {
+          const [infoResp, aiResp, submitResp] = await Promise.all([
+            cacheService.fetchWithCache(`homework_info:${hwId}`, () =>
+              apiClient.post('/Homework/get_info_by_homework_id', { First: courseId, Second: hwId })
+            ),
+            cacheService.fetchWithCache(`homework_ai_config:${hwId}`, () =>
+              apiClient.post('/Homework/get_AI_type', { First: hwId })
+            ),
+            cacheService.fetchWithCache(`final_submits:${hwId}`, () =>
+              apiClient.post('/Homework/get_final_submit', {
+                First: teacherId,
+                Second: jwt,
+                Third: courseId,
+                Fourth: hwId
               })
+            )
+          ])
+
+          if (!infoResp.data.success || !infoResp.data.data) return
+
+          const title = parseHomeworkInfo(infoResp.data.data, hwId).title || '未命名作业'
+          const rawAiType = aiResp.data?.data ? String(aiResp.data.data).split('\t\r')[0] || 'squat' : 'squat'
+
+          if (!submitResp.data.success || !submitResp.data.data || submitResp.data.data === 'NULL') return
+
+          const pairs = String(submitResp.data.data).split('\t\r').filter(Boolean)
+          
+          const detailPromises = pairs.map(async (pair) => {
+            const [studentId, submitId] = pair.split('\n')
+            if (submitId === '-1' || submitId === '-2') return null
+
+            const detailResp = await cacheService.fetchWithCache(`submit_detail:${submitId}`, () =>
+              apiClient.post('/Homework/get_submit_info', {
+                First: '1',
+                Second: teacherId,
+                Third: jwt,
+                Fourth: submitId
+              })
+            )
+
+            if (detailResp.data.success && detailResp.data.data) {
+              const detail = String(detailResp.data.data).trim().replace(/\t\r$/g, '').split('\t\r')
+              const score = parseInt(detail[1], 10) || 0
+              const submissionTime = parseDate(detail[4] || '')
+
+              if (submissionTime) {
+                return {
+                  courseId,
+                  homeworkId: hwId,
+                  homeworkTitle: title,
+                  aiType: rawAiType,
+                  studentId,
+                  score,
+                  submissionTime,
+                  totalStudents
+                }
+              }
             }
-          }
-        }
+            return null
+          })
+
+          const resolvedDetails = await Promise.all(detailPromises)
+          resolvedDetails.forEach(item => {
+            if (item) {
+              submissions.value.push(item)
+            }
+          })
+        })())
       }
     }
+
+    await Promise.all(hwPromises)
   } catch (err) {
     console.error('加载失败', err)
   } finally {
