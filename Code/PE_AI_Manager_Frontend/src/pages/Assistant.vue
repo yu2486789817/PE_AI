@@ -148,7 +148,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as aiChat from '../services/aiChat'
 import { marked } from 'marked'
