@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "peai")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.9"))
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "ollama")
 AVAILABLE_MODELS = [
     item.strip()
     for item in os.getenv(
