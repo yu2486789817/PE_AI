@@ -120,7 +120,7 @@
 
                     <button
                       v-if="sub.videoUrl && !sub.videoUrl.includes('test')"
-                      @click="viewVideo(sub.studentId, sub.studentName)"
+                      @click="viewVideo(sub.videoUrl, sub.studentName)"
                       class="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-sm text-xs transition-all kinetic-button flex items-center"
                     >
                       <VideoIcon class="w-3.5 h-3.5 mr-1" />
@@ -389,13 +389,10 @@ const saveGrade = async (sub) => {
   }
 }
 
-const viewVideo = (studentId, studentName = '') => {
-  if (!studentId) return
+const viewVideo = (videoUrl, studentName = '') => {
+  if (!videoUrl) return
 
-  // 构造 SSE 流地址
-  const baseUrl = aiClient.defaults.baseURL
-  currentVideoUrl.value = `${baseUrl}/get_processed_video?homework_id=${assignmentId}&student_id=${studentId}&download=false`
-
+  currentVideoUrl.value = videoUrl
   currentVideoTitle.value = `正在查看：${studentName} 的 AI 分析`
   videoDialogVisible.value = true
 }
