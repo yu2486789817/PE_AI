@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <text class="status-chip" :class="toneClass">{{ text }}</text>
 </template>
 
@@ -19,7 +19,7 @@ const normalized = computed(() => {
 const text = computed(() => {
   if (normalized.value === 'completed') return '已完成'
   if (normalized.value === 'active') return '进行中'
-  if (normalized.value === 'archived') return '已归档'
+  if (normalized.value === 'archived') return '已结束'
   if (normalized.value === 'expired') return '已截止'
   return '未发布'
 })

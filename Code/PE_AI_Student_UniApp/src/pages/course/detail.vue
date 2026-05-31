@@ -83,7 +83,7 @@ const loadCourseDetails = async () => {
 				// ignore teacher info failure
 			}
 
-			const status = d[5] === '2' ? '已归档' : d[5] === '1' ? '进行中' : '未发布'
+			const status = d[5] === '2' ? '已结束' : d[5] === '1' ? '进行中' : '未发布'
 			course.value = {
 				id: courseId.value,
 				name: d[1] || '未命名课程',

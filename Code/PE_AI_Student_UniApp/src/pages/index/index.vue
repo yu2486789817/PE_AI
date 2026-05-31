@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<PageLayout>
 		<view class="container">
 			<MobilePageHeader title="智慧运动课堂" subtitle="记录每一次进步，让训练反馈更科学。" />
@@ -34,7 +34,7 @@
 			<MobileEmptyState v-else-if="courses.length === 0" title="暂无课程" description="点击“加入课程”输入邀请码开始学习。" />
 
 			<view v-else class="list-wrap">
-				<ListCard v-for="c in courses" :key="c.id" @click="goToCourse(c)">
+				<ListCard v-for="c in courses" :key="c.id" @click="goToCourse(c)" :style="{ opacity: c.isActive === '2' ? 0.6 : 1 }">
 					<view class="course-top">
 						<text class="course-name">{{ c.name }}</text>
 						<StatusChip :value="c.isActive" />
@@ -262,7 +262,13 @@ const downloadHealthReport = () => {
 }
 
 const goTo = (url) => uni.switchTab({ url })
-const goToCourse = (c) => uni.navigateTo({ url: `/pages/course/detail?id=${c.id}` })
+const goToCourse = (c) => {
+	if (c.isActive === '2') {
+		uni.showToast({ title: '该课程已结束', icon: 'none' })
+		return
+	}
+	uni.navigateTo({ url: `/pages/course/detail?id=${c.id}` })
+}
 </script>
 
 <style scoped>
