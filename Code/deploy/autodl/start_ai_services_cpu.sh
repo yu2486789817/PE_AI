@@ -11,7 +11,7 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/root/autodl-tmp/PE_AI}"
 LOG_DIR="${LOG_DIR:-$PROJECT_DIR/logs}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-peai}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-pe-sports}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 YOLO_BASE_URL="${YOLO_BASE_URL:-http://127.0.0.1:8000}"
 

@@ -8,7 +8,7 @@ chat_module.py - AI 聊天核心模块
 
 模型配置：
 - Ollama 服务地址: http://localhost:11434
-- 模型名称: peai（需先导入到 Ollama）
+- 模型名称: qwen2.5-pe-sports（需先导入到 Ollama）
 """
 
 import os
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # ================= Ollama 配置 =================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "peai")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-pe-sports")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.9"))
 MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "ollama")
 AVAILABLE_MODELS = [

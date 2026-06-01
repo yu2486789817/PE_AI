@@ -130,9 +130,9 @@ INSERT INTO homework (course_id, title, description, deadline) VALUES
 ('C003', '乒乓球发球练习', '完成指定次数的发球动作训练。', current_timestamp + interval '14 days');
 
 INSERT INTO ai_type (homework_id, type, num) VALUES
-(1, 'backhand_push', 20),
-(2, 'fitness_combo', 1),
-(3, 'table_tennis_serve', 20);
+(1, 'pushup', 20),
+(2, 'deadlift', 1),
+(3, 'squat', 20);
 
 INSERT INTO class (course_id, title, description, content_url) VALUES
 ('C001', '篮球基础运球', '基础运球动作讲解。', ''),

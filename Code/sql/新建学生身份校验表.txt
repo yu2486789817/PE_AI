@@ -1,5 +1,5 @@
 CREATE TABLE std_student (
-    name varchar2(50),
-    id varchar2(50),
+    name VARCHAR(50),
+    id VARCHAR(50),
     PRIMARY KEY (id)
-) TABLESPACE SE_DATA;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

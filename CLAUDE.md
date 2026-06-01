@@ -102,7 +102,11 @@ cd Code/PE_AI_Student_UniApp
 npm install
 npm run dev:h5                         # H5 开发模式
 npm run build:h5                       # H5 生产构建
+npm run dev:mp-weixin                  # 微信小程序开发模式
+npm run build:mp-weixin                # 微信小程序构建（产物在 dist/build/mp-weixin，用微信开发者工具导入）
 ```
+
+> 注意：小程序播放 Supabase 视频直链，需在微信公众平台把确切域名（如 `yonuszotqcyqphhxrqaq.supabase.co`）加入 downloadFile 合法域名。
 
 ### AI 服务 (Python)
 
@@ -143,7 +147,7 @@ python main.py                         # 启动服务 (端口 5000)
 | teacher | 教师用户 | id, name, email, password |
 | std_student | 学生基准表 | id (用于注册验证) |
 | std_teacher | 教师基准表 | id (用于注册验证) |
-| course | 课程 | id, teacher_id, name, code, semester |
+| course | 课程 | id (课号/主键), teacher_id, name, code (6位课程码/邀请码), semester |
 | homework | 作业 | id, course_id, title, deadline |
 | submit | 提交 | id, homework_id, student_id, video_url, score, ai_feedback |
 | ai_type | 作业AI类型 | homework_id, type, num |
@@ -265,6 +269,17 @@ python main.py                         # 启动服务 (端口 5000)
 - 用户必须先存在于基准表（`std_student`/`std_teacher`）中才能注册
 - 注册时会验证用户 ID 是否在基准表中存在
 
+### 课程码与选课
+- 老师建课时后端生成 **6 位大写字母+数字**的课程码（`LegacyCourseController.newCourse`，字符集排除易混的 I/O/0/1，含唯一性校验）
+- 学生通过课程码加入课程；前端输入校验为 `/^[A-Z0-9]{6}$/` 并做大写归一化
+- 课程主键 `id` 即「课号」，与「课程码/邀请码」`code` 是两个不同字段，勿混用
+
+### 视频存储（Supabase Storage）
+- 教学视频（`/Teaching-video/upload`）和学生作业原始视频（`/Homework/upload_submit`）持久化到 **Supabase Storage**，由 `SupabaseStorageService` 统一处理
+- 通过环境变量 `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_BUCKET` 配置；未配置时回退到本地磁盘（仅适合本地开发）
+- 旧的 `/Teaching-video/files/{filename}` 链接在云模式下 302 重定向到 Supabase 公共 URL
+- 部署细节见 [DEPLOY_RENDER_SUPABASE.md](DEPLOY_RENDER_SUPABASE.md)
+
 ### AI 视频处理
 - 使用 YOLOv8-pose 模型进行人体关键点检测
 - 通过 SSE 流式传输实现逐帧实时反馈
@@ -274,6 +289,16 @@ python main.py                         # 启动服务 (端口 5000)
 - RESTful API，使用 `Result<T>` 统一响应格式
 - 配置 CORS 支持跨域请求
 - 后端作为 AI 服务的代理（配置在 `application.yml`）
+
+### 遗留接口数据格式（重要）
+- 一批遗留接口（`LegacyCourseController`、`LegacyUserController`，路径如 `/Course/*`、`/Homework/*`、`/Class/*`、`/User/*`）返回的是**以 `\t\r` 分隔、按固定位置拼接**的字符串，空字段也占位（如 `教师id\t\r课程名\t\r描述\t\r课程码\t\r学期\t\r状态\t\r时间`）。
+- 列表型接口在无数据时返回字符串 `"NULL"`（不是空、不是 null）。
+- **课号(课程号)不在返回串里**——它就是课程主键 `id`，作为查询入参传入。
+- 前端解析必须用共享工具 `PE_AI_Manager_Frontend/src/utils/legacyParse.js`，禁止各页面手写解析：
+  - `splitLegacyRecord(raw)`：拆分记录、保留空字段占位（**不可 `filter` 空值，否则字段左移错位**）
+  - `parseLegacyIdList(raw)`：解析 ID 列表，排除空值与 `"NULL"` 哨兵
+  - `parseCourseInfo(raw, courseId)` / `parseHomeworkInfo(raw, id)`：返回标准字段对象
+- 解析器保持纯函数、无业务 flag；各页面的差异（改名、转布尔、补充字段、文案）留在调用点。
 
 ## API 结构
 
@@ -339,10 +364,20 @@ python main.py                         # 启动服务 (端口 5000)
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## 部署架构
+
+- **Web 前端**：部署在 **Vercel**（连接 git，push 到 master 自动部署）
+- **后端**：部署在 **Render**（Docker，免费档，连接 git 自动部署；免费档闲置会休眠，首次请求冷启动较慢）
+- **数据库**：生产用 **Supabase PostgreSQL**（本地开发用 MySQL）
+- **视频文件**：**Supabase Storage**（见上文「视频存储」）
+- **AI 服务**（Yolo_backend / AIChat）：按需部署，后端通过 `YOLO_BASE_URL` / `AICHAT_BASE_URL` 环境变量指向其地址
+- 本地 `npm run dev` 通过 `vite.config.js` 代理把 API 请求转发到 Render 后端，即本地前端 + 线上后端/数据库
+
 ## 开发注意事项
 
-1. **只允许修改 AIChat 和 Yolo_backend 两个文件夹**
-2. **本地 LLM 部署**：项目已从 API Key 调用方式转变为本地部署 + LoRA 微调
-3. **模型下载**：推荐使用 ModelScope（国内速度更快）
-4. **显存要求**：7B 模型推理需要至少 16GB 显存，微调需要更多
-5. **数据质量**：训练数据需要人工审核，确保准确性
+1. **遵循 `karpathy-guidelines.SKILL.md`**：最小化改动、不臆造兼容代码、显式处理哨兵值与位置契约、删除自身改动产生的死代码
+2. **遗留接口解析统一走 `legacyParse.js`**（见「遗留接口数据格式」），勿在页面里手写 `\t\r` 拆分
+3. **本地 LLM 部署**：项目已从 API Key 调用方式转变为本地部署 + LoRA 微调
+4. **模型下载**：推荐使用 ModelScope（国内速度更快）
+5. **显存要求**：7B 模型推理需要至少 16GB 显存，微调需要更多
+6. **数据质量**：训练数据需要人工审核，确保准确性

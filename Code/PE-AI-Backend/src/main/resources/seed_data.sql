@@ -179,30 +179,18 @@ INSERT IGNORE INTO homework (course_id, title, description, deadline, create_tim
 -- 4. AI动作类型配置
 -- -------------------------------------------------------
 INSERT IGNORE INTO ai_type (homework_id, type, num) VALUES
--- 篮球相关
-(1, 'dribble', 30), (2, 'shoot', 10), (3, 'pass', 20), (4, 'defense', 20),
--- 健身操
-(5, 'aerobic', 20), (6, 'aerobic', 30), (7, 'rhythm', 30),
--- 游泳
-(8, 'swimming_kick', 50), (9, 'freestyle_breathing', 30), (10, 'freestyle', 100),
--- 羽毛球
-(11, 'badminton_serve', 10), (12, 'backhand', 20), (13, 'footwork', 30),
--- 足球
-(14, 'juggling', 10), (15, 'pass_accuracy', 20), (16, 'shot', 5),
--- 乒乓球
-(17, 'forehand_drive', 20), (18, 'backhand_push', 20), (19, 'serve_attack', 10),
--- 健美操
-(20, 'aerobic_step', 30), (21, 'arm_coordination', 30), (22, 'routine', 50),
--- 跆拳道
-(23, 'front_kick', 10), (24, 'round_kick', 10), (25, 'combo_kick', 5),
--- 网球
-(26, 'forehand', 10), (27, 'backhand', 10), (28, 'serve', 10),
--- 排球
-(29, 'bump', 15), (30, 'set', 15), (31, 'spike', 10),
--- 武术
-(32, 'taichi_start', 5), (33, 'bow_stance_punch', 20), (34, 'sword_basic', 15),
--- 瑜伽
-(35, 'mountain_pose', 10), (36, 'down_dog', 30), (37, 'tree_pose', 30), (38, 'sun_salutation', 10);
+(1, 'pushup', 30), (2, 'deadlift', 10), (3, 'squat', 20), (4, 'pushup', 20),
+(5, 'deadlift', 20), (6, 'squat', 30), (7, 'pushup', 30),
+(8, 'deadlift', 50), (9, 'squat', 30), (10, 'pushup', 100),
+(11, 'deadlift', 10), (12, 'squat', 20), (13, 'pushup', 30),
+(14, 'deadlift', 10), (15, 'squat', 20), (16, 'pushup', 5),
+(17, 'deadlift', 20), (18, 'squat', 20), (19, 'pushup', 10),
+(20, 'deadlift', 30), (21, 'squat', 30), (22, 'pushup', 50),
+(23, 'deadlift', 10), (24, 'squat', 10), (25, 'pushup', 5),
+(26, 'deadlift', 10), (27, 'squat', 10), (28, 'pushup', 10),
+(29, 'deadlift', 15), (30, 'squat', 15), (31, 'pushup', 10),
+(32, 'deadlift', 5), (33, 'squat', 20), (34, 'pushup', 15),
+(35, 'deadlift', 10), (36, 'squat', 30), (37, 'pushup', 30), (38, 'deadlift', 10);
 
 -- -------------------------------------------------------
 -- 5. 作业提交数据 (部分学生提交了作业，有AI评测和教师评分)

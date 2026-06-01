@@ -1,7 +1,7 @@
 CREATE TABLE student_course (
     id int,
-    student_id varchar2(50) NOT NULL,
-    course_id varchar2(50) NOT NULL,
+    student_id VARCHAR(50) NOT NULL,
+    course_id VARCHAR(50) NOT NULL,
     joined_time DATE,
     PRIMARY KEY (id),
     FOREIGN KEY (student_id)
@@ -10,4 +10,4 @@ CREATE TABLE student_course (
     FOREIGN KEY (course_id)
         REFERENCES course(id)
         ON DELETE CASCADE
-)TABLESPACE SE_DATA;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

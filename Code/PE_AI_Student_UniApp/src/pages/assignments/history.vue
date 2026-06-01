@@ -35,48 +35,7 @@
 						<text class="feedback-content">{{ item.teacher_feedback }}</text>
 					</view>
 
-					<view class="action-row" v-if="isLatest(idx)">
-						<button class="action-btn primary" @click="openReportDialog(item)">生成AI报告</button>
-						<button class="action-btn" @click="downloadReport(item)">下载报告</button>
-						<button class="action-btn danger" v-if="item.content_url" @click="deleteVideo(item)">删除视频</button>
-					</view>
-
 					<text class="latest-tag" v-if="isLatest(idx)">最新有效提交</text>
-				</view>
-			</view>
-
-			<view class="mask" v-if="showReportDialog" @click="closeReportDialog">
-				<view class="dialog" @click.stop>
-					<view class="dialog-header">
-						<text class="dialog-title">AI 分析报告</text>
-						<text class="dialog-close" @click="closeReportDialog">×</text>
-					</view>
-					<text class="dialog-sub">{{ currentSubmission && currentSubmission.title ? currentSubmission.title : '' }}</text>
-
-					<textarea
-						class="dialog-input"
-						v-model="reportQuery"
-						auto-height
-						maxlength="500"
-						placeholder="请输入希望 AI 重点分析的问题，例如：动作规范度、节奏控制、改进建议。"
-					/>
-
-					<button class="dialog-generate" :disabled="reportLoading || !reportQuery.trim()" @click="generateAnalysisReport">
-						<text class="dialog-generate-text">{{ reportLoading ? '生成中...' : '生成AI分析报告' }}</text>
-					</button>
-
-					<view v-if="reportError" class="dialog-error">
-						<text class="dialog-error-text">{{ reportError }}</text>
-					</view>
-
-					<scroll-view scroll-y class="dialog-report" v-if="reportContent">
-						<text class="dialog-report-text">{{ reportContent }}</text>
-					</scroll-view>
-
-					<view class="dialog-actions">
-						<button class="dialog-btn" v-if="reportContent" @click="downloadCurrentReport">下载报告</button>
-						<button class="dialog-btn cancel" @click="closeReportDialog">关闭</button>
-					</view>
 				</view>
 			</view>
 		</view>
@@ -93,26 +52,11 @@ const loading = ref(true);
 const assignmentId = ref('');
 const courseId = ref('');
 
-const showReportDialog = ref(false);
-const currentSubmission = ref(null);
-const reportQuery = ref('');
-const reportContent = ref('');
-const reportError = ref('');
-const reportLoading = ref(false);
-
 const getToken = () => {
 	const token = uni.getStorageSync('token');
 	if (token) return token;
 	const user = uni.getStorageSync('user') || {};
 	return user.token || '';
-};
-
-const getDateKey = () => {
-	const now = new Date();
-	const y = now.getFullYear();
-	const m = String(now.getMonth() + 1).padStart(2, '0');
-	const d = String(now.getDate()).padStart(2, '0');
-	return `${y}-${m}-${d}`;
 };
 
 onMounted(() => {
@@ -182,122 +126,6 @@ const loadSubmissions = async () => {
 		uni.showToast({ title: '加载失败', icon: 'none' });
 	} finally {
 		loading.value = false;
-	}
-};
-
-const openReportDialog = (item) => {
-	currentSubmission.value = item;
-	reportQuery.value = '请详细分析本次作业表现，并给出改进建议和下一步训练计划。';
-	reportContent.value = '';
-	reportError.value = '';
-	showReportDialog.value = true;
-};
-
-const closeReportDialog = () => {
-	if (reportLoading.value) return;
-	showReportDialog.value = false;
-};
-
-const generateAnalysisReport = async () => {
-	const item = currentSubmission.value;
-	const user = uni.getStorageSync('user') || {};
-	if (!item || !user?.id || !reportQuery.value.trim()) return;
-
-	reportLoading.value = true;
-	reportError.value = '';
-	reportContent.value = '';
-	try {
-		const reportResp = await request.post('/chat/api/analysis/generate', {
-			student_id: user.id,
-			analysis_type: 'homework_feedback',
-			homework_id: assignmentId.value,
-			query: reportQuery.value.trim()
-		});
-
-		if (!reportResp.data?.success || !reportResp.data?.data?.report) {
-			throw new Error(reportResp.data?.error || '报告生成失败');
-		}
-
-		const report = reportResp.data.data.report;
-		reportContent.value = report;
-		item.AI_feedback = report;
-
-		await request.post('/Homework/AI_test', {
-			first: String(item.id),
-			second: item.content_url || '',
-			third: item.score !== null ? String(item.score) : '0',
-			fourth: report
-		});
-
-		uni.showToast({ title: '报告已生成', icon: 'success' });
-	} catch (e) {
-		reportError.value = e?.message || '生成失败';
-	} finally {
-		reportLoading.value = false;
-	}
-};
-
-const downloadText = (content, fileName) => {
-	// #ifdef H5
-	const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement('a');
-	link.href = url;
-	link.download = fileName;
-	document.body.appendChild(link);
-	link.click();
-	document.body.removeChild(link);
-	URL.revokeObjectURL(url);
-	// #endif
-
-	// #ifndef H5
-	uni.setClipboardData({
-		data: content,
-		success: () => uni.showToast({ title: '已复制报告内容', icon: 'none' })
-	});
-	// #endif
-};
-
-const downloadReport = (item) => {
-	const report = item?.AI_feedback || '';
-	if (!report) {
-		uni.showToast({ title: '暂无可下载报告', icon: 'none' });
-		return;
-	}
-	downloadText(report, `AI分析报告_${item.id}_${getDateKey()}.md`);
-};
-
-const downloadCurrentReport = () => {
-	if (!reportContent.value || !currentSubmission.value) return;
-	downloadText(reportContent.value, `${currentSubmission.value.title || 'AI分析报告'}_${getDateKey()}.md`);
-};
-
-const confirmDelete = () => {
-	return new Promise((resolve) => {
-		uni.showModal({
-			title: '删除视频',
-			content: '确认删除该次提交的 AI 分析视频吗？',
-			success: (res) => resolve(!!res.confirm),
-			fail: () => resolve(false)
-		});
-	});
-};
-
-const deleteVideo = async (item) => {
-	const ok = await confirmDelete();
-	if (!ok) return;
-
-	try {
-		const resp = await request.delete(`/video/delete_homework?homework_id=${encodeURIComponent(item.id)}`);
-		const data = resp?.data || {};
-		if (data.success || data.status === 'success') {
-			item.content_url = '';
-			uni.showToast({ title: '删除成功', icon: 'success' });
-			return;
-		}
-		throw new Error(data.message || data.detail || '删除失败');
-	} catch (e) {
-		uni.showToast({ title: e?.message || '删除失败', icon: 'none' });
 	}
 };
 
@@ -425,175 +253,14 @@ const formatDate = (s) => {
 	color: #5b6b8f;
 }
 
-.action-row {
-	display: flex;
-	gap: 12rpx;
-	margin-top: 10rpx;
-	flex-wrap: wrap;
-}
-
-.action-btn {
-	flex: 1;
-	height: 72rpx;
-	line-height: 72rpx;
-	border-radius: 999rpx;
-	background: #eef2ff;
-	color: #334;
-	font-size: 24rpx;
-	font-weight: 600;
-	min-width: 180rpx;
-}
-
-.action-btn.primary {
-	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
-	color: #fff;
-}
-
-.action-btn.danger {
-	background: #ffe9ea;
-	color: #c43f3f;
-}
-
 .latest-tag {
-	position: absolute;
-	top: 18rpx;
-	right: 18rpx;
+	display: inline-block;
+	margin-top: 12rpx;
 	padding: 4rpx 12rpx;
 	border-radius: 999rpx;
 	font-size: 20rpx;
 	font-weight: 600;
 	background: rgba(18, 185, 129, 0.12);
 	color: #0f8a5f;
-}
-
-.mask {
-	position: fixed;
-	inset: 0;
-	background: rgba(10, 20, 40, 0.45);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 24rpx;
-	z-index: 999;
-}
-
-.dialog {
-	width: 100%;
-	max-height: 86vh;
-	background: #fff;
-	border-radius: 24rpx;
-	padding: 24rpx;
-	display: flex;
-	flex-direction: column;
-}
-
-.dialog-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-}
-
-.dialog-title {
-	font-size: 30rpx;
-	font-weight: 700;
-	color: #1f2f53;
-}
-
-.dialog-close {
-	font-size: 44rpx;
-	line-height: 1;
-	color: #7b879f;
-}
-
-.dialog-sub {
-	margin-top: 8rpx;
-	font-size: 23rpx;
-	color: #7381a1;
-}
-
-.dialog-input {
-	margin-top: 16rpx;
-	min-height: 120rpx;
-	max-height: 260rpx;
-	padding: 14rpx;
-	border-radius: 12rpx;
-	font-size: 24rpx;
-	line-height: 1.6;
-	background: #f6f9ff;
-	border: 1rpx solid #dfe7fb;
-}
-
-.dialog-generate {
-	margin-top: 12rpx;
-	height: 74rpx;
-	line-height: 74rpx;
-	border-radius: 999rpx;
-	font-size: 24rpx;
-	font-weight: 600;
-	background: linear-gradient(120deg, #1d63ff 0%, #23b9ff 100%);
-	color: #fff;
-}
-
-.dialog-generate[disabled] {
-	opacity: 0.55;
-	color: #fff;
-	background: linear-gradient(120deg, #9fbff8 0%, #a8d6fb 100%);
-}
-
-.dialog-generate-text {
-	color: #fff;
-	font-size: 24rpx;
-	font-weight: 600;
-	line-height: 74rpx;
-}
-
-.dialog-error {
-	margin-top: 12rpx;
-	padding: 12rpx;
-	border-radius: 10rpx;
-	background: #ffe9ea;
-}
-
-.dialog-error-text {
-	font-size: 22rpx;
-	color: #bf3d3d;
-}
-
-.dialog-report {
-	margin-top: 12rpx;
-	max-height: 320rpx;
-	padding: 14rpx;
-	border-radius: 12rpx;
-	background: #f8faff;
-	border: 1rpx solid #e2e9fc;
-}
-
-.dialog-report-text {
-	font-size: 23rpx;
-	line-height: 1.7;
-	color: #42557f;
-	white-space: pre-wrap;
-}
-
-.dialog-actions {
-	display: flex;
-	gap: 12rpx;
-	margin-top: 16rpx;
-}
-
-.dialog-btn {
-	flex: 1;
-	height: 72rpx;
-	line-height: 72rpx;
-	border-radius: 999rpx;
-	font-size: 24rpx;
-	font-weight: 600;
-	background: #eaf0ff;
-	color: #33539a;
-}
-
-.dialog-btn.cancel {
-	background: #f2f3f7;
-	color: #5d6781;
 }
 </style>

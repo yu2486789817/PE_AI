@@ -123,3 +123,19 @@ Code/deploy/autodl/secrets.env
 **/ .claude/
 ~$*
 **/~$*
+
+# SE course documents (SDS / SRS / SEE / SEM — not part of the codebase)
+/Docs/
+/Glossary_术语统一对照表.md
+/SDS/
+/SRS/
+/SEE/
+/SEM/
+/*.docx
+/*.txt
+!README.md
+!AGENTS.md
+!CLAUDE.md
+!DEPLOY_AUTODL_AI.md
+!DEPLOY_RENDER_SUPABASE.md
+!karpathy-guidelines.SKILL.md
