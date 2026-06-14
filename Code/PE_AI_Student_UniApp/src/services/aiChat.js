@@ -26,7 +26,7 @@ export const getLatestSession = async (userId) => {
 	}
 };
 
-export const createSession = async (userId, model = 'peai') => {
+export const createSession = async (userId, model = 'qwen2.5-pe-sports') => {
 	try {
 		const response = await request.post('/chat/api/sessions', {
 			user_id: userId,
@@ -55,7 +55,7 @@ export const getSession = async (sessionId) => {
 	}
 };
 
-export const sendMessage = async (sessionId, message, model = 'peai') => {
+export const sendMessage = async (sessionId, message, model = 'qwen2.5-pe-sports') => {
 	try {
 		const response = await request.post(`/chat/api/sessions/${sessionId}/messages`, {
 			message,

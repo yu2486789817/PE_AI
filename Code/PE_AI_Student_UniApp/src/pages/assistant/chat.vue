@@ -110,8 +110,8 @@ const scrollTop = ref(0);
 const currentSessionId = ref(null);
 const showHistory = ref(false);
 const sessions = ref([]);
-const modelNames = ref(['peai']);
-const selectedModel = ref('peai');
+const modelNames = ref(['qwen2.5-pe-sports']);
+const selectedModel = ref('qwen2.5-pe-sports');
 
 const formatDateKey = (date) => {
 	const y = date.getFullYear();
