@@ -775,6 +775,10 @@ public class LegacyCourseController {
         Homework homework = homeworkMapper.selectById(Integer.parseInt(homeworkIdStr.trim()));
         if (homework == null) return Result.error(-21, "Homework not found");
         if (courseId != null && !courseId.equals(homework.getCourseId())) return Result.error(-10, "Course/Homework mismatch");
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        if (homework.getDeadline() != null && !now.isBefore(homework.getDeadline())) {
+            return Result.error(-22, "Homework deadline passed");
+        }
         Course course = courseMapper.selectById(homework.getCourseId());
         if (course == null) return Result.error(-21, "Course not found");
         Result<Void> archivedCheck = rejectIfCourseArchived(course);
@@ -786,11 +790,17 @@ public class LegacyCourseController {
                         .eq(StudentCourse::getCourseId, homework.getCourseId()));
         if (enrolled == 0) return Result.error(-23, "JWT Error");
 
+        Long submitted = submitMapper.selectCount(
+                new LambdaQueryWrapper<Submit>()
+                        .eq(Submit::getStudentId, studentId)
+                        .eq(Submit::getHomeworkId, homework.getId()));
+        if (submitted != null && submitted > 0) return Result.error(-22, "Homework already submitted");
+
         Submit submit = new Submit();
         submit.setStudentId(studentId);
         submit.setHomeworkId(homework.getId());
         submit.setVideoUrl(videoUrl);
-        submit.setCreateTime(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
+        submit.setCreateTime(now);
         submitMapper.insert(submit);
         return Result.success(submit.getId());
     }

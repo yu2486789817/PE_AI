@@ -6,11 +6,16 @@
       class="relative aspect-video bg-black rounded-xl overflow-hidden shadow-lg"
     >
       <video
+        v-if="!directVideoError"
         :src="streamUrl"
         controls
         playsinline
         class="w-full h-full object-contain"
+        @error="directVideoError = true"
       ></video>
+      <div v-else class="absolute inset-0 flex items-center justify-center px-6 text-center text-gray-300">
+        视频地址不可访问，可能仍在生成或文件已失效
+      </div>
     </div>
     <!-- SSE 帧流（兼容老的 get_processed_video 流式端点） -->
     <template v-else>
@@ -51,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   streamUrl: {
@@ -80,6 +85,11 @@ const canvasRef = ref(null)
 const infoDivRef = ref(null)
 const isPlaying = ref(false)
 const eventSource = ref(null)
+const directVideoError = ref(false)
+
+watch(() => props.streamUrl, () => {
+  directVideoError.value = false
+})
 
 const startPlayback = () => {
   const canvas = canvasRef.value

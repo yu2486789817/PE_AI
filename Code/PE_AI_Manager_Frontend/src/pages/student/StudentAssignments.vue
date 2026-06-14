@@ -67,7 +67,7 @@
                 <span :class="[
                   'px-3 py-1 rounded-full text-sm font-medium',
                   assignment.status === '进行中' ? 'bg-blue-100 text-blue-800' :
-                  assignment.status === '已完成' ? 'bg-green-100 text-green-800' :
+                  ['已完成', '已提交'].includes(assignment.status) ? 'bg-green-100 text-green-800' :
                   'bg-gray-100 text-gray-800'
                 ]">
                   {{ assignment.status }}
@@ -141,15 +141,16 @@
               <!-- 上传区域 -->
               <div
                 class="w-full max-w-2xl border-2 border-dashed rounded-2xl p-6 text-center transition-all hover:bg-gray-50"
-                :disabled="assignment.status === '已完成'"
-                :class="assignment.status === '已完成' ? 'opacity-50 cursor-not-allowed' : ''"
+                :class="isSubmissionClosed ? 'opacity-50 cursor-not-allowed' : ''"
               >
                 <div class="text-6xl text-gray-300 mb-4">🎥</div>
                 <h3 class="text-xl font-bold text-gray-800 mb-2">上传作业视频</h3>
                 <p class="text-gray-500 mb-4">仅支持 MP4 格式，单个文件最大 100MB</p>
                 <button
                   @click="triggerFileInput"
+                  :disabled="isSubmissionClosed"
                   class="px-6 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow"
+                  :class="{ 'opacity-50 cursor-not-allowed': isSubmissionClosed }"
                 >
                   选择视频文件
                 </button>
@@ -159,7 +160,7 @@
                   accept="video/*"
                   class="hidden"
                   @change="handleFileChange"
-                  :disabled="assignment.status === '已完成'"
+                  :disabled="isSubmissionClosed"
                 />
               </div>
 
@@ -284,11 +285,11 @@
               <!-- 提交按钮 -->
               <button
                 @click="submitAssignment"
-                :disabled="!selectedFile || isUploading || assignment.status === '已完成'"
+                :disabled="!selectedFile || isUploading || isSubmissionClosed"
                 class="px-10 py-4 rounded-2xl bg-blue-500 text-white font-bold text-lg hover:bg-blue-600 transition-all shadow-lg"
-                :class="{ 'opacity-50 cursor-not-allowed': !selectedFile || isUploading || assignment.status === '已完成' }"
+                :class="{ 'opacity-50 cursor-not-allowed': !selectedFile || isUploading || isSubmissionClosed }"
               >
-                {{ isUploading ? '上传中...' : '提交作业' }}
+                {{ isUploading ? '上传中...' : isSubmitted ? '已提交' : isDeadlinePassed ? '已截止' : '提交作业' }}
               </button>
             </div>
           </div>
@@ -326,6 +327,17 @@ const errorMessage = ref('')
 const finalScore = ref(null)
 const aiType = ref(null)
 const requiredCount = ref(null)
+const currentTime = ref(Date.now())
+let deadlineTimer = null
+
+const isSubmitted = computed(() => ['已完成', '已提交'].includes(assignment.value?.status))
+const isDeadlinePassed = computed(() => {
+  const deadline = assignment.value?.deadline
+  if (!deadline) return false
+  const deadlineTime = new Date(deadline).getTime()
+  return !Number.isNaN(deadlineTime) && deadlineTime <= currentTime.value
+})
+const isSubmissionClosed = computed(() => isSubmitted.value || isDeadlinePassed.value)
 
 const aiTypeMap = {
   squat: '深蹲',
@@ -474,7 +486,7 @@ const goToHistory = () => {
 
 // 触发文件选择
 const triggerFileInput = () => {
-  if (assignment.value && assignment.value.status !== '已完成') {
+  if (!isSubmissionClosed.value) {
     fileInput.value.click()
   }
 }
@@ -552,6 +564,14 @@ const uploadHomeworkVideo = (formData, token) => {
 }
 
 const submitAssignment = async () => {
+  if (isSubmitted.value) {
+    alert('该作业已提交，不能重复提交')
+    return
+  }
+  if (isDeadlinePassed.value) {
+    alert('该作业已截止，不能再提交')
+    return
+  }
   if (!selectedFile.value) return
 
   try {
@@ -580,7 +600,7 @@ const submitAssignment = async () => {
     }
 
     if (assignment.value) {
-      assignment.value.status = '已提交'
+      assignment.value.status = '已完成'
     }
 
     removeFile()
@@ -728,10 +748,16 @@ const downloadProcessedVideo = async () => {
 onMounted(() => {
   fetchAssignmentDetails()
   fetchFinalScore()
+  deadlineTimer = window.setInterval(() => {
+    currentTime.value = Date.now()
+  }, 1000)
 })
 
 // 组件卸载时清理SSE连接
 onBeforeUnmount(() => {
   stopProcessedVideoPlayback()
+  if (deadlineTimer !== null) {
+    window.clearInterval(deadlineTimer)
+  }
 })
 </script>

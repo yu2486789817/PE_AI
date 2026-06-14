@@ -18,7 +18,7 @@
       <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-3xl p-6">
         <h3 class="text-xl font-bold text-red-800 mb-3">加载失败</h3>
         <p class="text-red-700 mb-4">{{ errorMessage }}</p>
-        <button @click="loadSubmissions" class="px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow">
+        <button @click="loadSubmissions()" class="px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow">
           重试
         </button>
       </div>
@@ -87,7 +87,7 @@
                   />
                 </div>
                 <div v-else class="aspect-video bg-gray-100 rounded-xl flex items-center justify-center border-2 border-dashed border-gray-300">
-                  <p class="text-gray-500">暂无AI分析视频</p>
+                  <p class="text-gray-500">{{ getVideoStatusText(submission) }}</p>
                 </div>
               </div>
 
@@ -219,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import apiClient from '../../services/axios.js'
 import SSEVideoPlayer from '../../components/SSEVideoPlayer.vue'
@@ -242,13 +242,17 @@ const reportQuery = ref('')
 
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 const studentId = currentUser.id || ''
-const jwt = currentUser.token || ''
+const jwt = localStorage.getItem('token') || currentUser.token || ''
 
 const courseId = route.params.courseId || ''
 const assignmentId = route.params.assignmentId || ''
+let refreshTimer = null
+let isRefreshing = false
 
-const loadSubmissions = async () => {
-  loading.value = true
+const loadSubmissions = async (silent = false) => {
+  if (isRefreshing) return
+  isRefreshing = true
+  if (!silent) loading.value = true
   error.value = false
   errorMessage.value = ''
 
@@ -370,12 +374,22 @@ const loadSubmissions = async () => {
 
     submissions.value = sortedSubmissions
   } catch (err) {
-    error.value = true
-    errorMessage.value = err.message || '加载提交历史失败'
+    if (!silent) {
+      error.value = true
+      errorMessage.value = err.message || '加载提交历史失败'
+    }
     console.error('加载提交历史失败:', err)
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
+    isRefreshing = false
   }
+}
+
+const getVideoStatusText = (submission) => {
+  const feedback = submission.AI_feedback || ''
+  if (feedback.includes('排队中')) return 'AI分析处理中，完成后将自动显示视频'
+  if (feedback.includes('失败')) return 'AI分析失败，暂无处理后视频'
+  return '暂无AI分析视频'
 }
 
 const deleteVideo = async (submission) => {
@@ -424,6 +438,21 @@ const formatDate = (dateStr) => {
 const isLatestSubmission = (index) => {
   return index === submissions.value.length - 1
 }
+
+onMounted(() => {
+  loadSubmissions()
+  refreshTimer = window.setInterval(() => {
+    if (submissions.value.some((submission) => (submission.AI_feedback || '').includes('排队中'))) {
+      loadSubmissions(true)
+    }
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
+  }
+})
 
 const openReportDialog = (submission) => {
   currentSubmission.value = submission
@@ -569,7 +598,4 @@ const goBack = () => {
   }
 }
 
-onMounted(() => {
-  loadSubmissions()
-})
 </script>
