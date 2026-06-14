@@ -14,7 +14,7 @@
         @error="directVideoError = true"
       ></video>
       <div v-else class="absolute inset-0 flex items-center justify-center px-6 text-center text-gray-300">
-        视频地址不可访问，可能仍在生成或文件已失效
+        视频无法播放，可能是编码不受浏览器支持或文件已失效
       </div>
     </div>
     <!-- SSE 帧流（兼容老的 get_processed_video 流式端点） -->

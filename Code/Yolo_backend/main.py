@@ -350,21 +350,27 @@ async def stream_process_video_endpoint(file_content: bytes, pose_type: str, sav
         out.release()
         cap.release()
 
-        # 使用 FFmpeg 将 AVI 转换为 H.264 MP4（浏览器兼容）
-        # 如果没有 FFmpeg，则直接使用 AVI 文件
+        # 使用 FFmpeg 将 AVI 转换为浏览器兼容的 H.264 MP4。
+        # 转码失败时不能把 AVI 伪装成 .mp4 上传，否则浏览器无法解码。
         import subprocess
         try:
             ffmpeg_cmd = [
                 'ffmpeg', '-y', '-i', temp_output_path,
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                '-pix_fmt', 'yuv420p', output_path
+                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+                '-an', output_path
             ]
-            subprocess.run(ffmpeg_cmd, capture_output=True, check=True, timeout=60)
+            subprocess.run(ffmpeg_cmd, capture_output=True, check=True, timeout=300)
             logger.info(f"FFmpeg 转换成功: {output_path}")
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-            logger.warning(f"FFmpeg 转换失败，使用原始 AVI: {e}")
-            # 如果 FFmpeg 失败，直接复制 AVI 文件
-            output_path = temp_output_path
+            stderr = getattr(e, 'stderr', b'')
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode('utf-8', errors='replace')
+            logger.error(f"FFmpeg 转换失败: {e}; stderr={stderr}")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            yield sse_format("error", {"message": "视频转码失败，请稍后重试"})
+            return
 
         # 如果需要保存到指定位置
         if save_path:
